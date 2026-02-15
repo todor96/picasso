@@ -19,6 +19,9 @@
 <canvas id="game"></canvas>
 <script>
 (() => {
+  // ─── Game Version ───
+  const GAME_VERSION = 'v2.0'; // Increment this with each major update
+  
   // ─── Canvas Setup ───
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
@@ -881,6 +884,12 @@
     ctx.font = '12px Arial';
     ctx.fillText('M', 45, canvas.height - 20);
 
+    // HUD — Version number (bottom left)
+    ctx.fillStyle = '#666';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(GAME_VERSION, 70, canvas.height - 18);
+
     // Pause button (mobile, top-left)
     if (isMobile && !gameOver && !paused) {
       ctx.save();
@@ -1070,9 +1079,33 @@
   loadAssets(() => startGame());
 })();
 
-// Register Service Worker
+// Register Service Worker with update checking
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW registration failed:', err));
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    // Check for updates every 60 seconds
+    setInterval(() => {
+      reg.update();
+    }, 60000);
+
+    // Listen for updates
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          // New version available - show notification
+          if (confirm('🎮 New version of Picasso Catch available! Reload to update?')) {
+            newWorker.postMessage({ action: 'skipWaiting' });
+            window.location.reload();
+          }
+        }
+      });
+    });
+
+    // Handle controller change (new service worker activated)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+  }).catch(err => console.warn('SW registration failed:', err));
 }
 </script>
 </body>
