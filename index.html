@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Picasso Catch Game</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+(() => {
+  // ─── Canvas Setup ───
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ─── Asset Loading ───
+  const SPRITE_NAMES = ['picasso', 'hrs', 'sus', 'muckalica', 'pizza'];
+  const sprites = {};
+  let assetsLoaded = 0;
+
+  function loadAssets(callback) {
+    SPRITE_NAMES.forEach(name => {
+      const img = new Image();
+      img.src = 'sprites/' + name + '.png';
+      img.onload = () => {
+        assetsLoaded++;
+        if (assetsLoaded === SPRITE_NAMES.length) callback();
+      };
+      img.onerror = () => {
+        console.error('Failed to load: ' + name + '.png');
+        assetsLoaded++;
+        if (assetsLoaded === SPRITE_NAMES.length) callback();
+      };
+      sprites[name] = img;
+    });
+  }
+
+  // ─── Game Constants ───
+  const PLAYER_WIDTH = 130;
+  const PLAYER_HEIGHT = 130;
+  const ITEM_SIZE = 90;
+  const PLAYER_SPEED = 7;
+  const INITIAL_FALL_SPEED = 2.5;
+  const INITIAL_SPAWN_INTERVAL = 1200; // ms
+  const DIFFICULTY_INTERVAL = 15000;   // ramp every 15s
+  const SPEED_INCREMENT = 0.4;
+  const SPAWN_DECREMENT = 80;          // ms faster spawn
+  const MIN_SPAWN_INTERVAL = 400;
+  const MAX_LIVES = 3;
+
+  const FOOD_TYPES = [
+    { name: 'hrs',       points: 2, deadly: false },
+    { name: 'sus',       points: 2, deadly: false },
+    { name: 'muckalica', points: 1, deadly: false },
+    { name: 'pizza',     points: 0, deadly: true  },
+  ];
+
+  // ─── Game State ───
+  let player, items, score, lives, gameOver, fallSpeed, spawnInterval;
+  let lastSpawn, lastDifficulty, gameStartTime, keys, animFrameId;
+
+  function resetState() {
+    player = {
+      x: canvas.width / 2 - PLAYER_WIDTH / 2,
+      y: canvas.height - PLAYER_HEIGHT - 10,
+      w: PLAYER_WIDTH,
+      h: PLAYER_HEIGHT,
+    };
+    items = [];
+    score = 0;
+    lives = MAX_LIVES;
+    gameOver = false;
+    fallSpeed = INITIAL_FALL_SPEED;
+    spawnInterval = INITIAL_SPAWN_INTERVAL;
+    lastSpawn = 0;
+    lastDifficulty = 0;
+    gameStartTime = performance.now();
+    keys = {};
+  }
+
+  // ─── Input Handling ───
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    // Restart on Enter when game is over
+    if (gameOver && e.key === 'Enter') {
+      startGame();
+    }
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  // Mouse / touch control
+  let pointerX = null;
+  canvas.addEventListener('mousemove', e => { pointerX = e.clientX; });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    pointerX = e.touches[0].clientX;
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => { pointerX = null; });
+  canvas.addEventListener('click', () => {
+    if (gameOver) startGame();
+  });
+
+  // ─── Spawning ───
+  function spawnItem() {
+    const type = FOOD_TYPES[Math.floor(Math.random() * FOOD_TYPES.length)];
+    const x = Math.random() * (canvas.width - ITEM_SIZE);
+    items.push({ x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, type });
+  }
+
+  // ─── Collision (AABB) ───
+  function overlaps(a, b) {
+    return a.x < b.x + b.w &&
+           a.x + a.w > b.x &&
+           a.y < b.y + b.h &&
+           a.y + a.h > b.y;
+  }
+
+  // ─── Update ───
+  function update(now) {
+    if (gameOver) return;
+
+    // Player movement — keyboard
+    if (keys['ArrowLeft'] || keys['a']) player.x -= PLAYER_SPEED;
+    if (keys['ArrowRight'] || keys['d']) player.x += PLAYER_SPEED;
+
+    // Player movement — mouse/touch
+    if (pointerX !== null) {
+      const target = pointerX - player.w / 2;
+      const dx = target - player.x;
+      player.x += dx * 0.15; // smooth follow
+    }
+
+    // Clamp to screen
+    player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+    // Keep player at bottom on resize
+    player.y = canvas.height - PLAYER_HEIGHT - 10;
+
+    // Difficulty ramp
+    const elapsed = now - gameStartTime;
+    if (elapsed - lastDifficulty >= DIFFICULTY_INTERVAL) {
+      lastDifficulty = elapsed;
+      fallSpeed += SPEED_INCREMENT;
+      spawnInterval = Math.max(MIN_SPAWN_INTERVAL, spawnInterval - SPAWN_DECREMENT);
+    }
+
+    // Spawn items
+    if (now - lastSpawn >= spawnInterval) {
+      spawnItem();
+      lastSpawn = now;
+    }
+
+    // Move items & check collisions
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      item.y += fallSpeed;
+
+      // Caught by player
+      if (overlaps(player, item)) {
+        if (item.type.deadly) {
+          gameOver = true;
+          return;
+        }
+        score += item.type.points;
+        items.splice(i, 1);
+        continue;
+      }
+
+      // Fell off bottom
+      if (item.y > canvas.height) {
+        if (!item.type.deadly) {
+          lives--;
+          if (lives <= 0) {
+            gameOver = true;
+            return;
+          }
+        }
+        // Pizza falling off = safe, just remove
+        items.splice(i, 1);
+      }
+    }
+  }
+
+  // ─── Draw ───
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#1a1a2e');
+    grad.addColorStop(1, '#16213e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Ground line
+    ctx.strokeStyle = '#30475e';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height - 5);
+    ctx.lineTo(canvas.width, canvas.height - 5);
+    ctx.stroke();
+
+    // Falling items
+    items.forEach(item => {
+      ctx.drawImage(sprites[item.type.name], item.x, item.y, item.w, item.h);
+    });
+
+    // Player
+    ctx.drawImage(sprites.picasso, player.x, player.y, player.w, player.h);
+
+    // HUD — Score (top right)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('Score: ' + score, canvas.width - 20, 35);
+
+    // HUD — Lives (top right, below score)
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = '22px Arial, sans-serif';
+    const hearts = '\u2764'.repeat(lives) + '\u25CB'.repeat(MAX_LIVES - lives);
+    ctx.fillText(hearts, canvas.width - 20, 65);
+
+    // Game Over overlay
+    if (gameOver) {
+      // Dim overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.textAlign = 'center';
+
+      // GAME OVER text
+      ctx.fillStyle = '#ff6b6b';
+      ctx.font = 'bold 64px Arial, sans-serif';
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 50);
+
+      // Reason
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '24px Arial, sans-serif';
+      const reason = lives <= 0 ? 'You ran out of lives!' : 'You caught a pizza!';
+      ctx.fillText(reason, canvas.width / 2, canvas.height / 2);
+
+      // Final score
+      ctx.fillStyle = '#f8d56b';
+      ctx.font = 'bold 36px Arial, sans-serif';
+      ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2 + 50);
+
+      // Restart prompt
+      ctx.fillStyle = '#aaaaaa';
+      ctx.font = '20px Arial, sans-serif';
+      ctx.fillText('Press ENTER or Click to Play Again', canvas.width / 2, canvas.height / 2 + 100);
+    }
+  }
+
+  // ─── Game Loop ───
+  function loop(now) {
+    update(now);
+    draw();
+    animFrameId = requestAnimationFrame(loop);
+  }
+
+  // ─── Start / Restart ───
+  function startGame() {
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    resetState();
+    lastSpawn = performance.now();
+    pointerX = null;
+    animFrameId = requestAnimationFrame(loop);
+  }
+
+  // ─── Loading Screen then Start ───
+  function drawLoadingScreen() {
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '28px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Loading...', canvas.width / 2, canvas.height / 2);
+  }
+
+  drawLoadingScreen();
+  loadAssets(() => startGame());
+})();
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW registration failed:', err));
+}
+</script>
+</body>
+</html>
