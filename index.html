@@ -277,11 +277,11 @@
   };
 
   // ─── Game State ───
-  let player, items, score, lives, gameOver, fallSpeed, spawnInterval;
-  let lastSpawn, lastDifficulty, gameStartTime, keys, animFrameId;
-  let combo, comboTimer, maxCombo, activePowerUps, lastPowerUpSpawn;
-  let stats, unlockedAchievements, newAchievements;
-  let paused, showPauseMenu, tiltEnabled, pauseStartTime;
+  let player, items = [], score, lives, gameOver = false, fallSpeed, spawnInterval;
+  let lastSpawn, lastDifficulty, gameStartTime, keys = {}, animFrameId;
+  let combo, comboTimer, maxCombo, activePowerUps = [], lastPowerUpSpawn;
+  let stats, unlockedAchievements, newAchievements = [];
+  let paused = false, showPauseMenu = false, tiltEnabled, pauseStartTime;
   let currentMode = GAME_MODES.NORMAL;
   let showModeSelect = false;
   let showTutorial = false;
