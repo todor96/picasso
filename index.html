@@ -22,6 +22,7 @@
   // ─── Canvas Setup ───
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   function resize() {
     canvas.width = window.innerWidth;
@@ -29,6 +30,124 @@
   }
   window.addEventListener('resize', resize);
   resize();
+
+  // ─── Sound Effects (Web Audio API) ───
+  let soundEnabled = true;
+
+  function playSound(type) {
+    if (!soundEnabled) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    
+    switch(type) {
+      case 'catch1': // 1 point item
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(660, now + 0.1);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+        break;
+      case 'catch2': // 2 point item
+        osc.frequency.setValueAtTime(660, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        break;
+      case 'combo':
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1320, now + 0.2);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.2);
+        break;
+      case 'powerup':
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.3);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+        break;
+      case 'miss':
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.3);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+        break;
+      case 'pizza':
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(55, now + 0.5);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now);
+        osc.stop(now + 0.5);
+        break;
+      case 'achievement':
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523, now);
+        osc.frequency.setValueAtTime(659, now + 0.1);
+        osc.frequency.setValueAtTime(784, now + 0.2);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+        break;
+    }
+  }
+
+  // ─── Particle System ───
+  let particles = [];
+  let screenShake = 0;
+
+  function createParticles(x, y, count, color, size = 3) {
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+      const speed = 2 + Math.random() * 4;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2,
+        life: 1,
+        decay: 0.015 + Math.random() * 0.01,
+        color,
+        size
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.2; // gravity
+      p.life -= p.decay;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    if (screenShake > 0) screenShake *= 0.9;
+    if (screenShake < 0.1) screenShake = 0;
+  }
+
+  function drawParticles() {
+    particles.forEach(p => {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    });
+    ctx.globalAlpha = 1;
+  }
 
   // ─── Asset Loading ───
   const SPRITE_NAMES = ['picasso', 'hrs', 'sus', 'muckalica', 'pizza'];
@@ -92,9 +211,71 @@
     { name: 'pizza',     points: 0, deadly: true  },
   ];
 
+  const POWER_UP_TYPES = [
+    { type: 'shield', color: '#4ECDC4', duration: 0, icon: '🛡️' },
+    { type: 'slowmo', color: '#95E1D3', duration: 5000, icon: '⏱️' },
+    { type: 'magnet', color: '#F38181', duration: 7000, icon: '🧲' },
+    { type: 'double', color: '#FFD93D', duration: 10000, icon: '2×' },
+  ];
+
+  const ACHIEVEMENTS = [
+    { id: 'first_catch', name: 'First Catch', desc: 'Catch your first item', check: s => s.totalCatches >= 1 },
+    { id: 'combo_5', name: 'Combo Starter', desc: 'Get a 5× combo', check: s => s.maxCombo >= 5 },
+    { id: 'combo_10', name: 'Combo Master', desc: 'Get a 10× combo', check: s => s.maxCombo >= 10 },
+    { id: 'score_50', name: 'Half Century', desc: 'Score 50 points', check: s => s.maxScore >= 50 },
+    { id: 'score_100', name: 'Centurion', desc: 'Score 100 points', check: s => s.maxScore >= 100 },
+    { id: 'survive_60', name: 'One Minute', desc: 'Survive 60 seconds', check: s => s.maxSurvivalTime >= 60 },
+    { id: 'pizza_dodge', name: 'Pizza Dodger', desc: 'Let 5 pizzas fall', check: s => s.pizzasDodged >= 5 },
+    { id: 'no_miss_10', name: 'Perfect 10', desc: 'Catch 10 in a row without missing', check: s => s.maxCombo >= 10 },
+  ];
+
   // ─── Game State ───
   let player, items, score, lives, gameOver, fallSpeed, spawnInterval;
   let lastSpawn, lastDifficulty, gameStartTime, keys, animFrameId;
+  let combo, comboTimer, maxCombo, activePowerUps, lastPowerUpSpawn;
+  let stats, unlockedAchievements, newAchievements;
+
+  // Load persistent stats from localStorage
+  function loadStats() {
+    const saved = localStorage.getItem('picassoStats');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch(e) {}
+    }
+    return {
+      totalCatches: 0,
+      maxScore: 0,
+      maxCombo: 0,
+      maxSurvivalTime: 0,
+      pizzasDodged: 0,
+      gamesPlayed: 0
+    };
+  }
+
+  function saveStats() {
+    localStorage.setItem('picassoStats', JSON.stringify(stats));
+  }
+
+  function loadAchievements() {
+    const saved = localStorage.getItem('picassoAchievements');
+    return saved ? JSON.parse(saved) : [];
+  }
+
+  function saveAchievements() {
+    localStorage.setItem('picassoAchievements', JSON.stringify(unlockedAchievements));
+  }
+
+  function checkAchievements() {
+    ACHIEVEMENTS.forEach(ach => {
+      if (!unlockedAchievements.includes(ach.id) && ach.check(stats)) {
+        unlockedAchievements.push(ach.id);
+        newAchievements.push(ach);
+        playSound('achievement');
+        saveAchievements();
+      }
+    });
+  }
 
   function resetState() {
     player = {
@@ -111,9 +292,21 @@
     spawnInterval = INITIAL_SPAWN_INTERVAL;
     lastSpawn = 0;
     lastDifficulty = 0;
+    lastPowerUpSpawn = 0;
     gameStartTime = performance.now();
+    combo = 0;
+    comboTimer = 0;
+    maxCombo = 0;
+    activePowerUps = [];
+    particles = [];
+    screenShake = 0;
+    newAchievements = [];
     keys = {};
+    stats.gamesPlayed++;
   }
+
+  stats = loadStats();
+  unlockedAchievements = loadAchievements();
 
   // ─── Input Handling ───
   window.addEventListener('keydown', e => {
@@ -121,6 +314,10 @@
     // Restart on Enter when game is over
     if (gameOver && e.key === 'Enter') {
       startGame();
+    }
+    // Mute toggle
+    if (e.key === 'm' || e.key === 'M') {
+      soundEnabled = !soundEnabled;
     }
   });
   window.addEventListener('keyup', e => { keys[e.key] = false; });
@@ -141,7 +338,46 @@
   function spawnItem() {
     const type = FOOD_TYPES[Math.floor(Math.random() * FOOD_TYPES.length)];
     const x = Math.random() * (canvas.width - ITEM_SIZE);
-    items.push({ x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, type });
+    items.push({ x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, type, isPowerUp: false });
+  }
+
+  function spawnPowerUp() {
+    const powerUp = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
+    const x = Math.random() * (canvas.width - ITEM_SIZE);
+    items.push({ 
+      x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, 
+      powerUp, 
+      isPowerUp: true,
+      type: { name: 'powerup', points: 0, deadly: false }
+    });
+  }
+
+  function activatePowerUp(powerUp) {
+    playSound('powerup');
+    if (powerUp.type === 'shield') {
+      // Shield gives 1 extra life
+      if (lives < MAX_LIVES) lives++;
+    } else {
+      // Timed power-ups
+      const existing = activePowerUps.find(p => p.type === powerUp.type);
+      if (existing) {
+        existing.endTime = performance.now() + powerUp.duration;
+      } else {
+        activePowerUps.push({
+          type: powerUp.type,
+          endTime: performance.now() + powerUp.duration,
+          ...powerUp
+        });
+      }
+    }
+  }
+
+  function updatePowerUps(now) {
+    activePowerUps = activePowerUps.filter(p => now < p.endTime);
+  }
+
+  function hasPowerUp(type) {
+    return activePowerUps.some(p => p.type === type);
   }
 
   // ─── Collision (pixel-perfect) ───
@@ -190,6 +426,17 @@
   function update(now) {
     if (gameOver) return;
 
+    updateParticles();
+    updatePowerUps(now);
+
+    // Combo timer decay
+    if (comboTimer > 0) {
+      comboTimer -= 16.67; // ~60fps
+      if (comboTimer <= 0) {
+        combo = 0;
+      }
+    }
+
     // Player movement — keyboard
     if (keys['ArrowLeft'] || keys['a']) player.x -= PLAYER_SPEED;
     if (keys['ArrowRight'] || keys['d']) player.x += PLAYER_SPEED;
@@ -220,39 +467,143 @@
       lastSpawn = now;
     }
 
+    // Spawn power-ups (every 20-30 seconds)
+    if (now - lastPowerUpSpawn >= 20000 + Math.random() * 10000) {
+      spawnPowerUp();
+      lastPowerUpSpawn = now;
+    }
+
+    // Current fall speed (affected by slowmo)
+    const currentFallSpeed = hasPowerUp('slowmo') ? fallSpeed * 0.5 : fallSpeed;
+
+    // Magnet effect
+    const magnetRange = hasPowerUp('magnet') ? 80 : 0;
+
     // Move items & check collisions
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i];
-      item.y += fallSpeed;
+      item.y += currentFallSpeed;
+
+      // Magnet attraction
+      if (magnetRange > 0 && !item.isPowerUp && !item.type.deadly) {
+        const dx = (player.x + player.w / 2) - (item.x + item.w / 2);
+        const dy = (player.y + player.h / 2) - (item.y + item.h / 2);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < magnetRange && dist > 0) {
+          item.x += (dx / dist) * 3;
+          item.y += (dy / dist) * 3;
+        }
+      }
 
       // Caught by player (pixel-perfect)
-      if (pixelOverlaps(player, 'picasso', item, item.type.name)) {
+      const collides = item.isPowerUp 
+        ? aabbOverlaps(player, item)  // Simple AABB for power-ups
+        : pixelOverlaps(player, 'picasso', item, item.type.name);
+
+      if (collides) {
+        if (item.isPowerUp) {
+          activatePowerUp(item.powerUp);
+          createParticles(item.x + item.w / 2, item.y + item.h / 2, 15, item.powerUp.color, 4);
+          items.splice(i, 1);
+          continue;
+        }
+
         if (item.type.deadly) {
+          playSound('pizza');
+          screenShake = 15;
+          createParticles(item.x + item.w / 2, item.y + item.h / 2, 20, '#ff6b6b', 5);
           gameOver = true;
+          
+          // Update stats
+          const survivalTime = Math.floor((now - gameStartTime) / 1000);
+          stats.maxScore = Math.max(stats.maxScore, score);
+          stats.maxCombo = Math.max(stats.maxCombo, maxCombo);
+          stats.maxSurvivalTime = Math.max(stats.maxSurvivalTime, survivalTime);
+          saveStats();
+          checkAchievements();
           return;
         }
-        score += item.type.points;
+
+        // Successful catch
+        const pointsEarned = item.type.points * (hasPowerUp('double') ? 2 : 1);
+        score += pointsEarned;
+        combo++;
+        comboTimer = 2000; // 2 seconds to maintain combo
+        maxCombo = Math.max(maxCombo, combo);
+        stats.totalCatches++;
+        
+        // Sound and particles
+        if (combo >= 5) {
+          playSound('combo');
+        } else {
+          playSound(item.type.points === 2 ? 'catch2' : 'catch1');
+        }
+
+        const particleColor = item.type.points === 2 ? '#FFD700' : '#4ECDC4';
+        createParticles(item.x + item.w / 2, item.y + item.h / 2, 12, particleColor);
+        
         items.splice(i, 1);
         continue;
       }
 
       // Fell off bottom
       if (item.y > canvas.height) {
-        if (!item.type.deadly) {
-          lives--;
-          if (lives <= 0) {
-            gameOver = true;
-            return;
-          }
+        if (item.isPowerUp) {
+          items.splice(i, 1);
+          continue;
         }
-        // Pizza falling off = safe, just remove
+
+        if (item.type.deadly) {
+          // Pizza dodged successfully
+          stats.pizzasDodged++;
+          items.splice(i, 1);
+          continue;
+        }
+
+        // Missed a food item
+        playSound('miss');
+        combo = 0; // Break combo
+        comboTimer = 0;
+        lives--;
+        screenShake = 8;
+        createParticles(item.x + item.w / 2, canvas.height - 20, 8, '#ff6b6b');
+
+        if (lives <= 0) {
+          gameOver = true;
+          
+          // Update stats
+          const survivalTime = Math.floor((now - gameStartTime) / 1000);
+          stats.maxScore = Math.max(stats.maxScore, score);
+          stats.maxCombo = Math.max(stats.maxCombo, maxCombo);
+          stats.maxSurvivalTime = Math.max(stats.maxSurvivalTime, survivalTime);
+          saveStats();
+          checkAchievements();
+          return;
+        }
+
         items.splice(i, 1);
       }
     }
+
+    // Check achievements during play
+    stats.maxScore = Math.max(stats.maxScore, score);
+    stats.maxCombo = Math.max(stats.maxCombo, combo);
+    saveStats();
+    checkAchievements();
   }
 
   // ─── Draw ───
   function draw() {
+    ctx.save();
+    
+    // Screen shake
+    if (screenShake > 0) {
+      ctx.translate(
+        (Math.random() - 0.5) * screenShake,
+        (Math.random() - 0.5) * screenShake
+      );
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Background gradient
@@ -272,11 +623,39 @@
 
     // Falling items
     items.forEach(item => {
-      ctx.drawImage(sprites[item.type.name], item.x, item.y, item.w, item.h);
+      if (item.isPowerUp) {
+        // Power-up visual
+        ctx.save();
+        ctx.globalAlpha = 0.8 + Math.sin(Date.now() / 200) * 0.2;
+        ctx.fillStyle = item.powerUp.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = item.powerUp.color;
+        ctx.beginPath();
+        ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item.powerUp.icon, item.x + item.w / 2, item.y + item.h / 2);
+        ctx.restore();
+      } else {
+        ctx.drawImage(sprites[item.type.name], item.x, item.y, item.w, item.h);
+      }
     });
 
-    // Player
+    // Particles
+    drawParticles();
+
+    // Player (with shadow)
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(player.x + 10, player.y + player.h - 5, player.w - 20, 10);
+    ctx.globalAlpha = 1;
     ctx.drawImage(sprites.picasso, player.x, player.y, player.w, player.h);
+    ctx.restore();
 
     // HUD — Score (top right)
     ctx.fillStyle = '#ffffff';
@@ -290,6 +669,73 @@
     const hearts = '\u2764'.repeat(lives) + '\u25CB'.repeat(MAX_LIVES - lives);
     ctx.fillText(hearts, canvas.width - 20, 65);
 
+    // HUD — Combo (center top)
+    if (combo >= 2) {
+      const comboScale = 1 + Math.min(combo / 20, 0.5);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = `bold ${24 * comboScale}px Arial, sans-serif`;
+      const comboAlpha = Math.min(comboTimer / 2000, 1);
+      
+      // Outline
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 4;
+      ctx.strokeText(combo + '× COMBO!', canvas.width / 2, 50);
+      
+      // Fill
+      ctx.fillStyle = combo >= 10 ? '#FFD700' : combo >= 5 ? '#FFA500' : '#4ECDC4';
+      ctx.globalAlpha = comboAlpha;
+      ctx.fillText(combo + '× COMBO!', canvas.width / 2, 50);
+      ctx.restore();
+    }
+
+    // HUD — Active Power-ups (left side)
+    ctx.textAlign = 'left';
+    ctx.font = '18px Arial, sans-serif';
+    activePowerUps.forEach((powerUp, idx) => {
+      const y = 35 + idx * 30;
+      const timeLeft = Math.ceil((powerUp.endTime - performance.now()) / 1000);
+      ctx.fillStyle = powerUp.color;
+      ctx.fillText(`${powerUp.icon} ${powerUp.type.toUpperCase()} (${timeLeft}s)`, 20, y);
+    });
+
+    // HUD — Sound indicator (top left corner)
+    ctx.fillStyle = soundEnabled ? '#4ECDC4' : '#666';
+    ctx.font = '20px Arial';
+    ctx.fillText(soundEnabled ? '🔊' : '🔇', 20, canvas.height - 20);
+    ctx.font = '12px Arial';
+    ctx.fillText('M', 45, canvas.height - 20);
+
+    // Achievement notifications (bottom center)
+    newAchievements.forEach((ach, idx) => {
+      const elapsed = performance.now() - gameStartTime;
+      const age = elapsed % 5000; // Show for 5 seconds, cycling
+      if (age < 3000 && idx === newAchievements.length - 1) { // Show latest
+        const alpha = age < 500 ? age / 500 : age > 2500 ? (3000 - age) / 500 : 1;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.textAlign = 'center';
+        
+        // Background
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+        ctx.fillRect(canvas.width / 2 - 150, canvas.height - 120, 300, 60);
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(canvas.width / 2 - 150, canvas.height - 120, 300, 60);
+        
+        // Text
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText('🏆 Achievement Unlocked!', canvas.width / 2, canvas.height - 100);
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(ach.name, canvas.width / 2, canvas.height - 75);
+        ctx.restore();
+      }
+    });
+
+    ctx.restore();
+
     // Game Over overlay
     if (gameOver) {
       // Dim overlay
@@ -301,23 +747,38 @@
       // GAME OVER text
       ctx.fillStyle = '#ff6b6b';
       ctx.font = 'bold 64px Arial, sans-serif';
-      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 50);
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 100);
 
       // Reason
       ctx.fillStyle = '#ffffff';
       ctx.font = '24px Arial, sans-serif';
       const reason = lives <= 0 ? 'You ran out of lives!' : 'You caught a pizza!';
-      ctx.fillText(reason, canvas.width / 2, canvas.height / 2);
+      ctx.fillText(reason, canvas.width / 2, canvas.height / 2 - 50);
 
       // Final score
       ctx.fillStyle = '#f8d56b';
       ctx.font = 'bold 36px Arial, sans-serif';
-      ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2 + 50);
+      ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2);
+
+      // Max combo
+      if (maxCombo >= 2) {
+        ctx.fillStyle = '#4ECDC4';
+        ctx.font = '24px Arial, sans-serif';
+        ctx.fillText('Max Combo: ' + maxCombo + '×', canvas.width / 2, canvas.height / 2 + 40);
+      }
+
+      // High score
+      ctx.fillStyle = '#aaaaaa';
+      ctx.font = '20px Arial, sans-serif';
+      ctx.fillText('Best Score: ' + stats.maxScore, canvas.width / 2, canvas.height / 2 + 75);
+
+      // Achievements count
+      ctx.fillText(`Achievements: ${unlockedAchievements.length}/${ACHIEVEMENTS.length}`, canvas.width / 2, canvas.height / 2 + 105);
 
       // Restart prompt
       ctx.fillStyle = '#aaaaaa';
       ctx.font = '20px Arial, sans-serif';
-      ctx.fillText('Press ENTER or Click to Play Again', canvas.width / 2, canvas.height / 2 + 100);
+      ctx.fillText('Press ENTER or Click to Play Again', canvas.width / 2, canvas.height / 2 + 140);
     }
   }
 
