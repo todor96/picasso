@@ -20,7 +20,7 @@
 <script>
 (() => {
   // ─── Game Version ───
-  const GAME_VERSION = 'v2.0'; // Increment this with each major update
+  const GAME_VERSION = 'v3.0'; // Increment this with each major update
   
   // ─── Canvas Setup ───
   const canvas = document.getElementById('game');
@@ -232,12 +232,62 @@
     { id: 'no_miss_10', name: 'Perfect 10', desc: 'Catch 10 in a row without missing', check: s => s.maxCombo >= 10 },
   ];
 
+  // ─── Game Modes ───
+  const GAME_MODES = {
+    NORMAL: {
+      id: 'normal',
+      name: 'Normal',
+      desc: 'Classic gameplay with lives and power-ups',
+      icon: '🎮',
+      lives: 3,
+      powerUps: true,
+      timeLimit: null,
+      speedMultiplier: 1
+    },
+    ZEN: {
+      id: 'zen',
+      name: 'Zen Mode',
+      desc: 'Relaxing endless mode - no lives, no pressure',
+      icon: '🧘',
+      lives: Infinity,
+      powerUps: true,
+      timeLimit: null,
+      speedMultiplier: 0.7
+    },
+    TIME_ATTACK: {
+      id: 'time',
+      name: 'Time Attack',
+      desc: '60 seconds - get the highest score possible!',
+      icon: '⏱️',
+      lives: Infinity,
+      powerUps: true,
+      timeLimit: 60000,
+      speedMultiplier: 1.2
+    },
+    HARDCORE: {
+      id: 'hardcore',
+      name: 'Hardcore',
+      desc: 'Fast from the start, no power-ups, 2 lives',
+      icon: '💀',
+      lives: 2,
+      powerUps: false,
+      timeLimit: null,
+      speedMultiplier: 1.5
+    }
+  };
+
   // ─── Game State ───
   let player, items, score, lives, gameOver, fallSpeed, spawnInterval;
   let lastSpawn, lastDifficulty, gameStartTime, keys, animFrameId;
   let combo, comboTimer, maxCombo, activePowerUps, lastPowerUpSpawn;
   let stats, unlockedAchievements, newAchievements;
   let paused, showPauseMenu, tiltEnabled, pauseStartTime;
+  let currentMode = GAME_MODES.NORMAL;
+  let showModeSelect = false;
+  let showTutorial = false;
+  let tutorialStep = 0;
+  let playerName = '';
+  let highScores;
   
   // Mobile detection
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -291,6 +341,49 @@
     }));
   }
 
+  // Leaderboard system
+  function loadLeaderboard(mode) {
+    const saved = localStorage.getItem(`picassoLeaderboard_${mode}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch(e) {}
+    }
+    return [];
+  }
+
+  function saveLeaderboard(mode, scores) {
+    localStorage.setItem(`picassoLeaderboard_${mode}`, JSON.stringify(scores));
+  }
+
+  function addHighScore(mode, playerScore, playerNameInput) {
+    const scores = loadLeaderboard(mode);
+    scores.push({
+      name: playerNameInput || 'Anonymous',
+      score: playerScore,
+      combo: maxCombo,
+      date: new Date().toISOString()
+    });
+    scores.sort((a, b) => b.score - a.score);
+    const trimmed = scores.slice(0, 10); // Keep top 10
+    saveLeaderboard(mode, trimmed);
+    return trimmed;
+  }
+
+  function isHighScore(mode, playerScore) {
+    const scores = loadLeaderboard(mode);
+    return scores.length < 10 || playerScore > scores[scores.length - 1].score;
+  }
+
+  // Tutorial system
+  function hasSeenTutorial() {
+    return localStorage.getItem('picassoTutorialSeen') === 'true';
+  }
+
+  function markTutorialSeen() {
+    localStorage.setItem('picassoTutorialSeen', 'true');
+  }
+
   function loadAchievements() {
     const saved = localStorage.getItem('picassoAchievements');
     return saved ? JSON.parse(saved) : [];
@@ -312,6 +405,8 @@
   }
 
   function resetState() {
+    const mode = currentMode || GAME_MODES.NORMAL;
+    
     player = {
       x: canvas.width / 2 - PLAYER_WIDTH / 2,
       y: canvas.height - PLAYER_HEIGHT - 10,
@@ -320,12 +415,12 @@
     };
     items = [];
     score = 0;
-    lives = MAX_LIVES;
+    lives = mode.lives === Infinity ? Infinity : mode.lives;
     gameOver = false;
     paused = false;
     showPauseMenu = false;
     pauseStartTime = 0;
-    fallSpeed = INITIAL_FALL_SPEED;
+    fallSpeed = INITIAL_FALL_SPEED * mode.speedMultiplier;
     spawnInterval = INITIAL_SPAWN_INTERVAL;
     lastSpawn = 0;
     lastDifficulty = 0;
@@ -347,15 +442,81 @@
   const settings = loadSettings();
   soundEnabled = settings.soundEnabled;
   tiltEnabled = settings.tiltEnabled;
+  currentMode = GAME_MODES.NORMAL;
+  showModeSelect = true;
+  showTutorial = !hasSeenTutorial();
+  tutorialStep = 0;
+  playerName = localStorage.getItem('picassoPlayerName') || '';
+  highScores = {};
 
   // ─── Input Handling ───
   window.addEventListener('keydown', e => {
     keys[e.key] = true;
+
+    // Name entry for high score
+    if (gameOver && isHighScore(currentMode.id, score) && !playerName) {
+      if (e.key === 'Enter' && playerName && playerName.trim().length > 0) {
+        // Save high score with name
+        addHighScore(currentMode.id, score, playerName.trim());
+        return;
+      }
+      if (e.key === 'Backspace') {
+        playerName = playerName.slice(0, -1);
+        return;
+      }
+      if (e.key.length === 1 && playerName.length < 15) {
+        playerName += e.key;
+        return;
+      }
+      return; // Block other keys during name entry
+    }
+
+    // Tutorial navigation
+    if (showTutorial) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        tutorialStep++;
+        if (tutorialStep >= 4) {
+          showTutorial = false;
+          markTutorialSeen();
+          showModeSelect = true;
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        showTutorial = false;
+        markTutorialSeen();
+        tutorialStep = 0;
+        showModeSelect = true;
+        return;
+      }
+      return; // Block other keys during tutorial
+    }
+
+    // Mode selection with number keys
+    if (showModeSelect) {
+      const modes = ['NORMAL', 'ZEN', 'TIME_ATTACK', 'HARDCORE'];
+      if (e.key >= '1' && e.key <= '4') {
+        currentMode = GAME_MODES[modes[e.key - 1]];
+        showModeSelect = false;
+        startGame();
+        return;
+      }
+      return; // Block other keys during mode select
+    }
+
     // Restart on Enter when game is over
     if (gameOver && e.key === 'Enter') {
       startGame();
       return;
     }
+
+    // Return to mode select from game over
+    if (gameOver && (e.key === 'm' || e.key === 'M')) {
+      showModeSelect = true;
+      playerName = '';
+      return;
+    }
+
     // Pause toggle (Escape or P)
     if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && !gameOver) {
       togglePause();
@@ -442,8 +603,85 @@
   });
   
   canvas.addEventListener('click', e => {
+    const x = e.clientX;
+    const y = e.clientY;
+
+    // Mode Selection
+    if (showModeSelect) {
+      const centerX = canvas.width / 2;
+      const buttonWidth = 300;
+      const buttonHeight = 80;
+      const startY = 220;
+      const spacing = 100;
+      const modes = ['NORMAL', 'ZEN', 'TIME_ATTACK', 'HARDCORE'];
+
+      for (let i = 0; i < modes.length; i++) {
+        const btnY = startY + i * spacing;
+        if (x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
+            y >= btnY && y <= btnY + buttonHeight) {
+          currentMode = GAME_MODES[modes[i]];
+          showModeSelect = false;
+          vibrate(10);
+          startGame();
+          return;
+        }
+      }
+      return;
+    }
+
+    // Tutorial
+    if (showTutorial) {
+      const btnY = canvas.height - 80;
+      
+      // Next/Start button
+      if (x >= canvas.width / 2 - 100 && x <= canvas.width / 2 + 100 &&
+          y >= btnY && y <= btnY + 50) {
+        tutorialStep++;
+        if (tutorialStep >= 4) {
+          showTutorial = false;
+          markTutorialSeen();
+          showModeSelect = true;
+        }
+        vibrate(8);
+        return;
+      }
+
+      // Skip button
+      if (tutorialStep < 3 && y >= canvas.height - 35 && y <= canvas.height - 5) {
+        showTutorial = false;
+        markTutorialSeen();
+        tutorialStep = 0;
+        showModeSelect = true;
+        vibrate(8);
+        return;
+      }
+      return;
+    }
+
+    // Name entry for high score (mobile)
+    if (gameOver && isHighScore(currentMode.id, score) && !playerName && isMobile) {
+      const namePrompt = prompt('🏆 New High Score!\n\nEnter your name:');
+      if (namePrompt && namePrompt.trim().length > 0) {
+        playerName = namePrompt.trim().substring(0, 15);
+        addHighScore(currentMode.id, score, playerName);
+      }
+      return;
+    }
+
+    // Game over - restart or mode select
     if (gameOver) {
-      startGame();
+      // Check if clicking on mode select hint area
+      const leaderboard = loadLeaderboard(currentMode.id);
+      const promptY = leaderboard.length > 0 ? 460 : 260;
+      if (y >= promptY + 10 && y <= promptY + 40) {
+        // Clicking on "Press M to change mode" area
+        showModeSelect = true;
+        playerName = '';
+        vibrate(10);
+      } else {
+        // Regular restart
+        startGame();
+      }
       return;
     }
     
@@ -596,6 +834,21 @@
     updateParticles();
     updatePowerUps(now);
 
+    // Time Attack mode - check time limit
+    if (currentMode.timeLimit) {
+      const elapsed = now - gameStartTime;
+      if (elapsed >= currentMode.timeLimit) {
+        gameOver = true;
+        
+        // Update stats
+        stats.maxScore = Math.max(stats.maxScore, score);
+        stats.maxCombo = Math.max(stats.maxCombo, maxCombo);
+        saveStats();
+        checkAchievements();
+        return;
+      }
+    }
+
     // Combo timer decay
     if (comboTimer > 0) {
       comboTimer -= 16.67; // ~60fps
@@ -639,8 +892,8 @@
       lastSpawn = now;
     }
 
-    // Spawn power-ups (every 20-30 seconds)
-    if (now - lastPowerUpSpawn >= 20000 + Math.random() * 10000) {
+    // Spawn power-ups (every 20-30 seconds) - disabled in hardcore mode
+    if (currentMode.powerUps && now - lastPowerUpSpawn >= 20000 + Math.random() * 10000) {
       spawnPowerUp();
       lastPowerUpSpawn = now;
     }
@@ -841,11 +1094,19 @@
     ctx.textAlign = 'right';
     ctx.fillText('Score: ' + score, canvas.width - 20, 35);
 
-    // HUD — Lives (top right, below score)
-    ctx.fillStyle = '#ff6b6b';
-    ctx.font = '22px Arial, sans-serif';
-    const hearts = '\u2764'.repeat(lives) + '\u25CB'.repeat(MAX_LIVES - lives);
-    ctx.fillText(hearts, canvas.width - 20, 65);
+    // HUD — Lives (top right, below score) - or Time Remaining for Time Attack
+    if (currentMode.timeLimit) {
+      const elapsed = performance.now() - gameStartTime;
+      const remaining = Math.max(0, Math.ceil((currentMode.timeLimit - elapsed) / 1000));
+      ctx.fillStyle = remaining < 10 ? '#ff6b6b' : '#4ECDC4';
+      ctx.font = '22px Arial, sans-serif';
+      ctx.fillText('⏱️ ' + remaining + 's', canvas.width - 20, 65);
+    } else if (lives !== Infinity) {
+      ctx.fillStyle = '#ff6b6b';
+      ctx.font = '22px Arial, sans-serif';
+      const hearts = '\u2764'.repeat(lives) + '\u25CB'.repeat(MAX_LIVES - lives);
+      ctx.fillText(hearts, canvas.width - 20, 65);
+    }
 
     // HUD — Combo (center top)
     if (combo >= 2) {
@@ -1003,6 +1264,138 @@
       ctx.fillText('Press ESC or P to resume', canvas.width / 2, canvas.height / 2 + 50);
     }
 
+    // Mode Selection Screen
+    if (showModeSelect) {
+      ctx.fillStyle = 'rgba(26, 26, 46, 0.95)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f8d56b';
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.fillText('🍔 PICASSO CATCH', canvas.width / 2, 100);
+      
+      ctx.fillStyle = '#aaa';
+      ctx.font = '20px Arial, sans-serif';
+      ctx.fillText('Select Game Mode', canvas.width / 2, 160);
+      
+      const centerX = canvas.width / 2;
+      const buttonWidth = 300;
+      const buttonHeight = 80;
+      const startY = 220;
+      const spacing = 100;
+      
+      const modes = [
+        { id: 'NORMAL', emoji: '🎮', title: 'NORMAL', desc: '3 lives • Power-ups enabled', color: '#4ECDC4' },
+        { id: 'ZEN', emoji: '🧘', title: 'ZEN MODE', desc: 'Infinite lives • Slower pace', color: '#95E1D3' },
+        { id: 'TIME_ATTACK', emoji: '⏱️', title: 'TIME ATTACK', desc: '60 seconds • Fast pace', color: '#F38181' },
+        { id: 'HARDCORE', emoji: '💀', title: 'HARDCORE', desc: '2 lives • No power-ups • Fast', color: '#AA4465' }
+      ];
+      
+      modes.forEach((mode, idx) => {
+        const y = startY + idx * spacing;
+        
+        // Button background
+        ctx.fillStyle = mode.color;
+        ctx.fillRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
+        
+        // Button border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
+        
+        // Mode title
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 24px Arial, sans-serif';
+        ctx.fillText(mode.emoji + ' ' + mode.title, centerX, y + 30);
+        
+        // Mode description
+        ctx.font = '16px Arial, sans-serif';
+        ctx.fillText(mode.desc, centerX, y + 55);
+      });
+      
+      return; // Don't draw game elements when in mode select
+    }
+
+    // Tutorial Overlay
+    if (showTutorial) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      const tutorialSteps = [
+        {
+          title: '👋 Welcome to Picasso Catch!',
+          text: isMobile ? 'Tilt your device or drag to move Picasso' : 'Use arrow keys or mouse to move Picasso',
+          demo: '⬅️ 🧑‍🍳 ➡️'
+        },
+        {
+          title: '🍖 Catch the Good Food',
+          text: 'Catch HRS and ŠUS (+2 points) or Muckalica (+1 point)\nBuild combos by catching multiple items quickly!',
+          demo: '🍖 +2 | 🥘 +1'
+        },
+        {
+          title: '🎁 Power-ups',
+          text: 'Collect power-ups for special abilities:\n🛡️ Shield • 🕐 Slow Mo • 🧲 Magnet • ✨ Double Points',
+          demo: '🎁'
+        },
+        {
+          title: '🍕 Avoid Pizza!',
+          text: 'Pizza is instant game over!\nDodge it at all costs.',
+          demo: '🍕 ☠️'
+        }
+      ];
+      
+      const step = tutorialSteps[tutorialStep];
+      if (!step) {
+        showTutorial = false;
+        markTutorialSeen();
+        showModeSelect = true;
+        return;
+      }
+      
+      ctx.textAlign = 'center';
+      
+      // Title
+      ctx.fillStyle = '#f8d56b';
+      ctx.font = 'bold 36px Arial, sans-serif';
+      ctx.fillText(step.title, canvas.width / 2, 150);
+      
+      // Demo emoji/visual
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.fillText(step.demo, canvas.width / 2, 250);
+      
+      // Text
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px Arial, sans-serif';
+      const lines = step.text.split('\n');
+      lines.forEach((line, idx) => {
+        ctx.fillText(line, canvas.width / 2, 320 + idx * 30);
+      });
+      
+      // Progress dots
+      ctx.font = '24px Arial, sans-serif';
+      const dots = tutorialSteps.map((_, idx) => idx === tutorialStep ? '⚫' : '⚪').join(' ');
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(dots, canvas.width / 2, canvas.height - 120);
+      
+      // Next button
+      const btnY = canvas.height - 80;
+      const btnText = tutorialStep < tutorialSteps.length - 1 ? 'NEXT' : 'START GAME';
+      ctx.fillStyle = '#4ECDC4';
+      ctx.fillRect(canvas.width / 2 - 100, btnY, 200, 50);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 20px Arial, sans-serif';
+      ctx.fillText(btnText, canvas.width / 2, btnY + 33);
+      
+      // Skip button
+      if (tutorialStep < tutorialSteps.length - 1) {
+        ctx.fillStyle = '#666';
+        ctx.font = '16px Arial, sans-serif';
+        ctx.fillText('Skip Tutorial', canvas.width / 2, canvas.height - 20);
+      }
+      
+      return; // Don't draw game elements during tutorial
+    }
+
     // Game Over overlay
     if (gameOver) {
       // Dim overlay
@@ -1011,41 +1404,116 @@
 
       ctx.textAlign = 'center';
 
+      // Check if this is a high score that needs name entry
+      const isNewHighScore = isHighScore(currentMode.id, score);
+      const needsNameEntry = isNewHighScore && !playerName;
+
+      if (needsNameEntry) {
+        // Name Entry Screen
+        ctx.fillStyle = '#f8d56b';
+        ctx.font = 'bold 48px Arial, sans-serif';
+        ctx.fillText('🏆 NEW HIGH SCORE!', canvas.width / 2, 150);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 36px Arial, sans-serif';
+        ctx.fillText('Score: ' + score, canvas.width / 2, 220);
+
+        ctx.font = '24px Arial, sans-serif';
+        ctx.fillText('Enter your name:', canvas.width / 2, 280);
+
+        // Name input box
+        const inputWidth = 300;
+        const inputHeight = 50;
+        const inputY = 310;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(canvas.width / 2 - inputWidth / 2, inputY, inputWidth, inputHeight);
+        ctx.strokeStyle = '#4ECDC4';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(canvas.width / 2 - inputWidth / 2, inputY, inputWidth, inputHeight);
+
+        // Display entered name
+        ctx.fillStyle = '#000';
+        ctx.font = '28px Arial, sans-serif';
+        ctx.fillText(playerName || '_', canvas.width / 2, inputY + 35);
+
+        // Instructions
+        ctx.fillStyle = '#aaa';
+        ctx.font = '18px Arial, sans-serif';
+        ctx.fillText(isMobile ? 'Tap to enter name' : 'Type your name and press ENTER', canvas.width / 2, inputY + 80);
+
+        return; // Don't show rest of game over screen yet
+      }
+
       // GAME OVER text
       ctx.fillStyle = '#ff6b6b';
-      ctx.font = 'bold 64px Arial, sans-serif';
-      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 100);
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.fillText('GAME OVER', canvas.width / 2, 80);
 
       // Reason
       ctx.fillStyle = '#ffffff';
-      ctx.font = '24px Arial, sans-serif';
-      const reason = lives <= 0 ? 'You ran out of lives!' : 'You caught a pizza!';
-      ctx.fillText(reason, canvas.width / 2, canvas.height / 2 - 50);
+      ctx.font = '20px Arial, sans-serif';
+      const reason = lives <= 0 ? (currentMode.timeLimit ? 'Time\'s up!' : 'Out of lives!') : 'You caught a pizza!';
+      ctx.fillText(reason, canvas.width / 2, 120);
 
       // Final score
       ctx.fillStyle = '#f8d56b';
-      ctx.font = 'bold 36px Arial, sans-serif';
-      ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2);
+      ctx.font = 'bold 32px Arial, sans-serif';
+      ctx.fillText('Score: ' + score, canvas.width / 2, 160);
 
       // Max combo
       if (maxCombo >= 2) {
         ctx.fillStyle = '#4ECDC4';
-        ctx.font = '24px Arial, sans-serif';
-        ctx.fillText('Max Combo: ' + maxCombo + '×', canvas.width / 2, canvas.height / 2 + 40);
+        ctx.font = '20px Arial, sans-serif';
+        ctx.fillText('Max Combo: ' + maxCombo + '×', canvas.width / 2, 190);
       }
 
-      // High score
-      ctx.fillStyle = '#aaaaaa';
-      ctx.font = '20px Arial, sans-serif';
-      ctx.fillText('Best Score: ' + stats.maxScore, canvas.width / 2, canvas.height / 2 + 75);
+      // Leaderboard
+      const leaderboard = loadLeaderboard(currentMode.id);
+      if (leaderboard.length > 0) {
+        ctx.fillStyle = '#f8d56b';
+        ctx.font = 'bold 24px Arial, sans-serif';
+        ctx.fillText('🏆 ' + currentMode.name + ' Leaderboard', canvas.width / 2, 230);
 
-      // Achievements count
-      ctx.fillText(`Achievements: ${unlockedAchievements.length}/${ACHIEVEMENTS.length}`, canvas.width / 2, canvas.height / 2 + 105);
+        ctx.font = '18px Arial, sans-serif';
+        const startY = 260;
+        const maxShow = Math.min(5, leaderboard.length);
+
+        for (let i = 0; i < maxShow; i++) {
+          const entry = leaderboard[i];
+          const y = startY + i * 30;
+          
+          // Highlight current player's score
+          const isPlayerScore = isNewHighScore && entry.score === score && entry.name === playerName;
+          if (isPlayerScore) {
+            ctx.fillStyle = '#4ECDC4';
+            ctx.fillRect(canvas.width / 2 - 180, y - 20, 360, 28);
+          }
+
+          ctx.fillStyle = isPlayerScore ? '#000' : '#fff';
+          ctx.textAlign = 'left';
+          ctx.fillText(`${i + 1}. ${entry.name}`, canvas.width / 2 - 170, y);
+          ctx.textAlign = 'right';
+          ctx.fillText(`${entry.score}`, canvas.width / 2 + 170, y);
+        }
+
+        ctx.textAlign = 'center';
+      }
+
+      // Stats
+      ctx.fillStyle = '#aaa';
+      ctx.font = '16px Arial, sans-serif';
+      const statsY = leaderboard.length > 0 ? 420 : 220;
+      ctx.fillText(`Best: ${stats.maxScore} | Achievements: ${unlockedAchievements.length}/${ACHIEVEMENTS.length}`, canvas.width / 2, statsY);
 
       // Restart prompt
-      ctx.fillStyle = '#aaaaaa';
-      ctx.font = '20px Arial, sans-serif';
-      ctx.fillText('Press ENTER or Click to Play Again', canvas.width / 2, canvas.height / 2 + 140);
+      ctx.fillStyle = '#aaa';
+      ctx.font = '18px Arial, sans-serif';
+      const promptY = leaderboard.length > 0 ? 460 : 260;
+      ctx.fillText(isMobile ? 'Tap to Play Again' : 'Press ENTER or Click to Play Again', canvas.width / 2, promptY);
+
+      // Mode selection hint
+      ctx.font = '14px Arial, sans-serif';
+      ctx.fillText('Press M to change mode', canvas.width / 2, promptY + 25);
     }
   }
 
@@ -1059,9 +1527,30 @@
   // ─── Start / Restart ───
   function startGame() {
     if (animFrameId) cancelAnimationFrame(animFrameId);
+
+    // Save high score from previous game if applicable
+    if (gameOver && score > 0 && playerName) {
+      // Already saved during name entry, just reset
+      playerName = '';
+    }
+
     resetState();
     lastSpawn = performance.now();
     pointerX = null;
+    animFrameId = requestAnimationFrame(loop);
+  }
+
+  // ─── Initial Setup ───
+  function init() {
+    // Check if first time user
+    if (!hasSeenTutorial()) {
+      showTutorial = true;
+      tutorialStep = 0;
+    } else {
+      showModeSelect = true;
+    }
+    
+    // Start the render loop (will show tutorial or mode select)
     animFrameId = requestAnimationFrame(loop);
   }
 
@@ -1076,7 +1565,7 @@
   }
 
   drawLoadingScreen();
-  loadAssets(() => startGame());
+  loadAssets(() => init());
 })();
 
 // Register Service Worker with update checking

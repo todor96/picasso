@@ -1,4 +1,4 @@
-const CACHE_NAME = 'picasso-catch-v2'; // Increment version to force cache refresh
+const CACHE_NAME = 'picasso-catch-v3'; // Increment version to force cache refresh
 const ASSETS = [
   './',
   './index.html',
