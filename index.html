@@ -33,13 +33,33 @@
   // ─── Asset Loading ───
   const SPRITE_NAMES = ['picasso', 'hrs', 'sus', 'muckalica', 'pizza'];
   const sprites = {};
+  const alphaMasks = {};  // pre-computed alpha masks for pixel-perfect collision
   let assetsLoaded = 0;
+
+  // Build a boolean alpha mask at a given render size
+  function buildAlphaMask(img, w, h) {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = w;
+    offscreen.height = h;
+    const offCtx = offscreen.getContext('2d');
+    offCtx.drawImage(img, 0, 0, w, h);
+    const data = offCtx.getImageData(0, 0, w, h).data;
+    const mask = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      mask[i] = data[i * 4 + 3] > 20 ? 1 : 0;  // alpha threshold of 20
+    }
+    return { mask, w, h };
+  }
 
   function loadAssets(callback) {
     SPRITE_NAMES.forEach(name => {
       const img = new Image();
       img.src = 'sprites/' + name + '.png';
       img.onload = () => {
+        // Build masks at the sizes used in-game
+        const mw = (name === 'picasso') ? PLAYER_WIDTH : ITEM_SIZE;
+        const mh = (name === 'picasso') ? PLAYER_HEIGHT : ITEM_SIZE;
+        alphaMasks[name] = buildAlphaMask(img, mw, mh);
         assetsLoaded++;
         if (assetsLoaded === SPRITE_NAMES.length) callback();
       };
@@ -124,12 +144,46 @@
     items.push({ x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, type });
   }
 
-  // ─── Collision (AABB) ───
-  function overlaps(a, b) {
+  // ─── Collision (pixel-perfect) ───
+  function aabbOverlaps(a, b) {
     return a.x < b.x + b.w &&
            a.x + a.w > b.x &&
            a.y < b.y + b.h &&
            a.y + a.h > b.y;
+  }
+
+  function pixelOverlaps(a, aMaskName, b, bMaskName) {
+    // Fast AABB rejection first
+    if (!aabbOverlaps(a, b)) return false;
+
+    const maskA = alphaMasks[aMaskName];
+    const maskB = alphaMasks[bMaskName];
+    if (!maskA || !maskB) return true; // fallback if mask missing
+
+    // Compute overlapping rectangle in world coordinates
+    const left   = Math.max(a.x, b.x);
+    const right  = Math.min(a.x + a.w, b.x + b.w);
+    const top    = Math.max(a.y, b.y);
+    const bottom = Math.min(a.y + a.h, b.y + b.h);
+
+    // Sample every 2 pixels for performance
+    const step = 2;
+    for (let wy = top; wy < bottom; wy += step) {
+      for (let wx = left; wx < right; wx += step) {
+        const ax = Math.floor(wx - a.x);
+        const ay = Math.floor(wy - a.y);
+        const bx = Math.floor(wx - b.x);
+        const by = Math.floor(wy - b.y);
+
+        if (ax >= 0 && ax < maskA.w && ay >= 0 && ay < maskA.h &&
+            bx >= 0 && bx < maskB.w && by >= 0 && by < maskB.h) {
+          if (maskA.mask[ay * maskA.w + ax] && maskB.mask[by * maskB.w + bx]) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   // ─── Update ───
@@ -171,8 +225,8 @@
       const item = items[i];
       item.y += fallSpeed;
 
-      // Caught by player
-      if (overlaps(player, item)) {
+      // Caught by player (pixel-perfect)
+      if (pixelOverlaps(player, 'picasso', item, item.type.name)) {
         if (item.type.deadly) {
           gameOver = true;
           return;
