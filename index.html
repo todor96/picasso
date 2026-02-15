@@ -829,7 +829,7 @@
 
   // ─── Update ───
   function update(now) {
-    if (gameOver || paused) return;
+    if (showModeSelect || showTutorial || gameOver || paused) return;
 
     updateParticles();
     updatePowerUps(now);
@@ -1036,6 +1036,140 @@
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Mode Selection Screen
+    if (showModeSelect) {
+      ctx.fillStyle = 'rgba(26, 26, 46, 0.95)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f8d56b';
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.fillText('🍔 PICASSO CATCH', canvas.width / 2, 100);
+      
+      ctx.fillStyle = '#aaa';
+      ctx.font = '20px Arial, sans-serif';
+      ctx.fillText('Select Game Mode', canvas.width / 2, 160);
+      
+      const centerX = canvas.width / 2;
+      const buttonWidth = 300;
+      const buttonHeight = 80;
+      const startY = 220;
+      const spacing = 100;
+      
+      const modes = [
+        { id: 'NORMAL', emoji: '🎮', title: 'NORMAL', desc: '3 lives • Power-ups enabled', color: '#4ECDC4' },
+        { id: 'ZEN', emoji: '🧘', title: 'ZEN MODE', desc: 'Infinite lives • Slower pace', color: '#95E1D3' },
+        { id: 'TIME_ATTACK', emoji: '⏱️', title: 'TIME ATTACK', desc: '60 seconds • Fast pace', color: '#F38181' },
+        { id: 'HARDCORE', emoji: '💀', title: 'HARDCORE', desc: '2 lives • No power-ups • Fast', color: '#AA4465' }
+      ];
+      
+      modes.forEach((mode, idx) => {
+        const y = startY + idx * spacing;
+        
+        // Button background
+        ctx.fillStyle = mode.color;
+        ctx.fillRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
+        
+        // Button border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
+        
+        // Mode title
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 24px Arial, sans-serif';
+        ctx.fillText(mode.emoji + ' ' + mode.title, centerX, y + 30);
+        
+        // Mode description
+        ctx.font = '16px Arial, sans-serif';
+        ctx.fillText(mode.desc, centerX, y + 55);
+      });
+      
+      ctx.restore();
+      return; // Don't draw game elements when in mode select
+    }
+
+    // Tutorial Overlay
+    if (showTutorial) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      const tutorialSteps = [
+        {
+          title: '👋 Welcome to Picasso Catch!',
+          text: isMobile ? 'Tilt your device or drag to move Picasso' : 'Use arrow keys or mouse to move Picasso',
+          demo: '⬅️ 🧑‍🍳 ➡️'
+        },
+        {
+          title: '🍖 Catch the Good Food',
+          text: 'Catch HRS and ŠUS (+2 points) or Muckalica (+1 point)\nBuild combos by catching multiple items quickly!',
+          demo: '🍖 +2 | 🥘 +1'
+        },
+        {
+          title: '🎁 Power-ups',
+          text: 'Collect power-ups for special abilities:\n🛡️ Shield • 🕐 Slow Mo • 🧲 Magnet • ✨ Double Points',
+          demo: '🎁'
+        },
+        {
+          title: '🍕 Avoid Pizza!',
+          text: 'Pizza is instant game over!\nDodge it at all costs.',
+          demo: '🍕 ☠️'
+        }
+      ];
+      
+      const step = tutorialSteps[tutorialStep];
+      if (!step) {
+        showTutorial = false;
+        markTutorialSeen();
+        showModeSelect = true;
+        return;
+      }
+      
+      ctx.textAlign = 'center';
+      
+      // Title
+      ctx.fillStyle = '#f8d56b';
+      ctx.font = 'bold 36px Arial, sans-serif';
+      ctx.fillText(step.title, canvas.width / 2, 150);
+      
+      // Demo emoji/visual
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.fillText(step.demo, canvas.width / 2, 250);
+      
+      // Text
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px Arial, sans-serif';
+      const lines = step.text.split('\n');
+      lines.forEach((line, idx) => {
+        ctx.fillText(line, canvas.width / 2, 320 + idx * 30);
+      });
+      
+      // Progress dots
+      ctx.font = '24px Arial, sans-serif';
+      const dots = tutorialSteps.map((_, idx) => idx === tutorialStep ? '⚫' : '⚪').join(' ');
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(dots, canvas.width / 2, canvas.height - 120);
+      
+      // Next button
+      const btnY = canvas.height - 80;
+      const btnText = tutorialStep < tutorialSteps.length - 1 ? 'NEXT' : 'START GAME';
+      ctx.fillStyle = '#4ECDC4';
+      ctx.fillRect(canvas.width / 2 - 100, btnY, 200, 50);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 20px Arial, sans-serif';
+      ctx.fillText(btnText, canvas.width / 2, btnY + 33);
+      
+      // Skip button
+      if (tutorialStep < tutorialSteps.length - 1) {
+        ctx.fillStyle = '#666';
+        ctx.font = '16px Arial, sans-serif';
+        ctx.fillText('Skip Tutorial', canvas.width / 2, canvas.height - 20);
+      }
+      
+      ctx.restore();
+      return; // Don't draw game elements during tutorial
+    }
 
     // Background gradient
     const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -1262,138 +1396,6 @@
       ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2);
       ctx.font = '20px Arial';
       ctx.fillText('Press ESC or P to resume', canvas.width / 2, canvas.height / 2 + 50);
-    }
-
-    // Mode Selection Screen
-    if (showModeSelect) {
-      ctx.fillStyle = 'rgba(26, 26, 46, 0.95)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#f8d56b';
-      ctx.font = 'bold 48px Arial, sans-serif';
-      ctx.fillText('🍔 PICASSO CATCH', canvas.width / 2, 100);
-      
-      ctx.fillStyle = '#aaa';
-      ctx.font = '20px Arial, sans-serif';
-      ctx.fillText('Select Game Mode', canvas.width / 2, 160);
-      
-      const centerX = canvas.width / 2;
-      const buttonWidth = 300;
-      const buttonHeight = 80;
-      const startY = 220;
-      const spacing = 100;
-      
-      const modes = [
-        { id: 'NORMAL', emoji: '🎮', title: 'NORMAL', desc: '3 lives • Power-ups enabled', color: '#4ECDC4' },
-        { id: 'ZEN', emoji: '🧘', title: 'ZEN MODE', desc: 'Infinite lives • Slower pace', color: '#95E1D3' },
-        { id: 'TIME_ATTACK', emoji: '⏱️', title: 'TIME ATTACK', desc: '60 seconds • Fast pace', color: '#F38181' },
-        { id: 'HARDCORE', emoji: '💀', title: 'HARDCORE', desc: '2 lives • No power-ups • Fast', color: '#AA4465' }
-      ];
-      
-      modes.forEach((mode, idx) => {
-        const y = startY + idx * spacing;
-        
-        // Button background
-        ctx.fillStyle = mode.color;
-        ctx.fillRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
-        
-        // Button border
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
-        
-        // Mode title
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 24px Arial, sans-serif';
-        ctx.fillText(mode.emoji + ' ' + mode.title, centerX, y + 30);
-        
-        // Mode description
-        ctx.font = '16px Arial, sans-serif';
-        ctx.fillText(mode.desc, centerX, y + 55);
-      });
-      
-      return; // Don't draw game elements when in mode select
-    }
-
-    // Tutorial Overlay
-    if (showTutorial) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      const tutorialSteps = [
-        {
-          title: '👋 Welcome to Picasso Catch!',
-          text: isMobile ? 'Tilt your device or drag to move Picasso' : 'Use arrow keys or mouse to move Picasso',
-          demo: '⬅️ 🧑‍🍳 ➡️'
-        },
-        {
-          title: '🍖 Catch the Good Food',
-          text: 'Catch HRS and ŠUS (+2 points) or Muckalica (+1 point)\nBuild combos by catching multiple items quickly!',
-          demo: '🍖 +2 | 🥘 +1'
-        },
-        {
-          title: '🎁 Power-ups',
-          text: 'Collect power-ups for special abilities:\n🛡️ Shield • 🕐 Slow Mo • 🧲 Magnet • ✨ Double Points',
-          demo: '🎁'
-        },
-        {
-          title: '🍕 Avoid Pizza!',
-          text: 'Pizza is instant game over!\nDodge it at all costs.',
-          demo: '🍕 ☠️'
-        }
-      ];
-      
-      const step = tutorialSteps[tutorialStep];
-      if (!step) {
-        showTutorial = false;
-        markTutorialSeen();
-        showModeSelect = true;
-        return;
-      }
-      
-      ctx.textAlign = 'center';
-      
-      // Title
-      ctx.fillStyle = '#f8d56b';
-      ctx.font = 'bold 36px Arial, sans-serif';
-      ctx.fillText(step.title, canvas.width / 2, 150);
-      
-      // Demo emoji/visual
-      ctx.font = 'bold 48px Arial, sans-serif';
-      ctx.fillText(step.demo, canvas.width / 2, 250);
-      
-      // Text
-      ctx.fillStyle = '#fff';
-      ctx.font = '20px Arial, sans-serif';
-      const lines = step.text.split('\n');
-      lines.forEach((line, idx) => {
-        ctx.fillText(line, canvas.width / 2, 320 + idx * 30);
-      });
-      
-      // Progress dots
-      ctx.font = '24px Arial, sans-serif';
-      const dots = tutorialSteps.map((_, idx) => idx === tutorialStep ? '⚫' : '⚪').join(' ');
-      ctx.fillStyle = '#aaa';
-      ctx.fillText(dots, canvas.width / 2, canvas.height - 120);
-      
-      // Next button
-      const btnY = canvas.height - 80;
-      const btnText = tutorialStep < tutorialSteps.length - 1 ? 'NEXT' : 'START GAME';
-      ctx.fillStyle = '#4ECDC4';
-      ctx.fillRect(canvas.width / 2 - 100, btnY, 200, 50);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 20px Arial, sans-serif';
-      ctx.fillText(btnText, canvas.width / 2, btnY + 33);
-      
-      // Skip button
-      if (tutorialStep < tutorialSteps.length - 1) {
-        ctx.fillStyle = '#666';
-        ctx.font = '16px Arial, sans-serif';
-        ctx.fillText('Skip Tutorial', canvas.width / 2, canvas.height - 20);
-      }
-      
-      return; // Don't draw game elements during tutorial
     }
 
     // Game Over overlay
