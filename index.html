@@ -234,6 +234,17 @@
   let lastSpawn, lastDifficulty, gameStartTime, keys, animFrameId;
   let combo, comboTimer, maxCombo, activePowerUps, lastPowerUpSpawn;
   let stats, unlockedAchievements, newAchievements;
+  let paused, showPauseMenu, tiltEnabled, pauseStartTime;
+  
+  // Mobile detection
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // Haptic feedback support
+  function vibrate(duration = 10) {
+    if (navigator.vibrate && isMobile) {
+      navigator.vibrate(duration);
+    }
+  }
 
   // Load persistent stats from localStorage
   function loadStats() {
@@ -255,6 +266,26 @@
 
   function saveStats() {
     localStorage.setItem('picassoStats', JSON.stringify(stats));
+  }
+
+  function loadSettings() {
+    const saved = localStorage.getItem('picassoSettings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch(e) {}
+    }
+    return {
+      soundEnabled: true,
+      tiltEnabled: false
+    };
+  }
+
+  function saveSettings() {
+    localStorage.setItem('picassoSettings', JSON.stringify({
+      soundEnabled,
+      tiltEnabled
+    }));
   }
 
   function loadAchievements() {
@@ -288,6 +319,9 @@
     score = 0;
     lives = MAX_LIVES;
     gameOver = false;
+    paused = false;
+    showPauseMenu = false;
+    pauseStartTime = 0;
     fallSpeed = INITIAL_FALL_SPEED;
     spawnInterval = INITIAL_SPAWN_INTERVAL;
     lastSpawn = 0;
@@ -307,6 +341,9 @@
 
   stats = loadStats();
   unlockedAchievements = loadAchievements();
+  const settings = loadSettings();
+  soundEnabled = settings.soundEnabled;
+  tiltEnabled = settings.tiltEnabled;
 
   // ─── Input Handling ───
   window.addEventListener('keydown', e => {
@@ -314,25 +351,152 @@
     // Restart on Enter when game is over
     if (gameOver && e.key === 'Enter') {
       startGame();
+      return;
+    }
+    // Pause toggle (Escape or P)
+    if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && !gameOver) {
+      togglePause();
+      return;
     }
     // Mute toggle
     if (e.key === 'm' || e.key === 'M') {
       soundEnabled = !soundEnabled;
+      saveSettings();
     }
   });
   window.addEventListener('keyup', e => { keys[e.key] = false; });
 
+  // Tilt controls (device orientation)
+  let tiltX = 0;
+  if (isMobile && window.DeviceOrientationEvent) {
+    window.addEventListener('deviceorientation', e => {
+      if (!tiltEnabled || !e.gamma) return;
+      // gamma is tilt left/right: -90 to 90
+      tiltX = Math.max(-30, Math.min(30, e.gamma)) / 30; // normalize to -1 to 1
+    });
+  }
+
+  function togglePause() {
+    if (paused) {
+      // Resume
+      const pauseDuration = performance.now() - pauseStartTime;
+      gameStartTime += pauseDuration;
+      lastSpawn += pauseDuration;
+      lastDifficulty += pauseDuration;
+      lastPowerUpSpawn += pauseDuration;
+      paused = false;
+      showPauseMenu = false;
+    } else {
+      // Pause
+      paused = true;
+      showPauseMenu = !isMobile; // Auto-show menu on desktop
+      pauseStartTime = performance.now();
+    }
+  }
+
   // Mouse / touch control
   let pointerX = null;
-  canvas.addEventListener('mousemove', e => { pointerX = e.clientX; });
+  let touchStartX = null;
+  
+  canvas.addEventListener('mousemove', e => { 
+    if (!isMobile) pointerX = e.clientX; 
+  });
+  
+  canvas.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  
   canvas.addEventListener('touchmove', e => {
     e.preventDefault();
-    pointerX = e.touches[0].clientX;
+    const touch = e.touches[0];
+    pointerX = touch.clientX;
   }, { passive: false });
-  canvas.addEventListener('touchend', () => { pointerX = null; });
-  canvas.addEventListener('click', () => {
-    if (gameOver) startGame();
+  
+  canvas.addEventListener('touchend', e => { 
+    const touch = e.changedTouches[0];
+    
+    // Check if tapped pause button (top-left corner on mobile)
+    if (!gameOver && isMobile) {
+      const pauseButtonSize = 55;
+      if (touch.clientX < pauseButtonSize && touch.clientY < pauseButtonSize) {
+        if (paused) {
+          showPauseMenu = !showPauseMenu;
+        } else {
+          paused = true;
+          showPauseMenu = true;
+          pauseStartTime = performance.now();
+        }
+        vibrate(10);
+        e.preventDefault();
+        pointerX = null;
+        touchStartX = null;
+        return;
+      }
+    }
+    
+    pointerX = null;
+    touchStartX = null;
   });
+  
+  canvas.addEventListener('click', e => {
+    if (gameOver) {
+      startGame();
+      return;
+    }
+    
+    // Handle pause menu clicks
+    if (paused && showPauseMenu) {
+      handlePauseMenuClick(e.clientX, e.clientY);
+    }
+  });
+
+  function handlePauseMenuClick(x, y) {
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const buttonWidth = 200;
+    const buttonHeight = 50;
+    const spacing = 15;
+
+    // Resume button
+    if (x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
+        y >= centerY - 60 && y <= centerY - 10) {
+      togglePause();
+      vibrate(10);
+      return;
+    }
+
+    // Sound toggle button
+    if (x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
+        y >= centerY + 10 && y <= centerY + 60) {
+      soundEnabled = !soundEnabled;
+      saveSettings();
+      vibrate(10);
+      return;
+    }
+
+    // Tilt controls toggle (mobile only)
+    if (isMobile && x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
+        y >= centerY + 75 && y <= centerY + 125) {
+      tiltEnabled = !tiltEnabled;
+      saveSettings();
+      vibrate(10);
+      return;
+    }
+
+    // Reset stats button
+    const resetY = isMobile ? centerY + 140 : centerY + 75;
+    if (x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
+        y >= resetY && y <= resetY + 50) {
+      if (confirm('Reset all stats and achievements?')) {
+        localStorage.removeItem('picassoStats');
+        localStorage.removeItem('picassoAchievements');
+        stats = loadStats();
+        unlockedAchievements = loadAchievements();
+        vibrate(20);
+      }
+      return;
+    }
+  }
 
   // ─── Spawning ───
   function spawnItem() {
@@ -424,7 +588,7 @@
 
   // ─── Update ───
   function update(now) {
-    if (gameOver) return;
+    if (gameOver || paused) return;
 
     updateParticles();
     updatePowerUps(now);
@@ -441,11 +605,16 @@
     if (keys['ArrowLeft'] || keys['a']) player.x -= PLAYER_SPEED;
     if (keys['ArrowRight'] || keys['d']) player.x += PLAYER_SPEED;
 
+    // Player movement — tilt (mobile)
+    if (tiltEnabled && tiltX !== 0) {
+      player.x += tiltX * PLAYER_SPEED;
+    }
+
     // Player movement — mouse/touch
-    if (pointerX !== null) {
+    if (pointerX !== null && !tiltEnabled) {
       const target = pointerX - player.w / 2;
       const dx = target - player.x;
-      player.x += dx * 0.15; // smooth follow
+      player.x += dx * 0.2; // slightly faster for mobile
     }
 
     // Clamp to screen
@@ -504,6 +673,7 @@
         if (item.isPowerUp) {
           activatePowerUp(item.powerUp);
           createParticles(item.x + item.w / 2, item.y + item.h / 2, 15, item.powerUp.color, 4);
+          vibrate(15);
           items.splice(i, 1);
           continue;
         }
@@ -512,6 +682,7 @@
           playSound('pizza');
           screenShake = 15;
           createParticles(item.x + item.w / 2, item.y + item.h / 2, 20, '#ff6b6b', 5);
+          vibrate(50);
           gameOver = true;
           
           // Update stats
@@ -531,6 +702,9 @@
         comboTimer = 2000; // 2 seconds to maintain combo
         maxCombo = Math.max(maxCombo, combo);
         stats.totalCatches++;
+        
+        // Haptic feedback - stronger for high combos
+        vibrate(combo >= 5 ? 15 : 8);
         
         // Sound and particles
         if (combo >= 5) {
@@ -562,6 +736,7 @@
 
         // Missed a food item
         playSound('miss');
+        vibrate(20);
         combo = 0; // Break combo
         comboTimer = 0;
         lives--;
@@ -706,6 +881,22 @@
     ctx.font = '12px Arial';
     ctx.fillText('M', 45, canvas.height - 20);
 
+    // Pause button (mobile, top-left)
+    if (isMobile && !gameOver && !paused) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(5, 5, 50, 50);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(5, 5, 50, 50);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 30px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⏸', 30, 30);
+      ctx.restore();
+    }
+
     // Achievement notifications (bottom center)
     newAchievements.forEach((ach, idx) => {
       const elapsed = performance.now() - gameStartTime;
@@ -735,6 +926,73 @@
     });
 
     ctx.restore();
+
+    // Pause Menu
+    if (paused && showPauseMenu) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4ECDC4';
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 120);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const buttonWidth = 200;
+      const buttonHeight = 50;
+
+      // Helper function to draw a button
+      function drawButton(y, text, enabled = true) {
+        ctx.fillStyle = enabled ? 'rgba(78, 205, 196, 0.3)' : 'rgba(100, 100, 100, 0.3)';
+        ctx.fillRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
+        ctx.strokeStyle = enabled ? '#4ECDC4' : '#666';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(centerX - buttonWidth / 2, y, buttonWidth, buttonHeight);
+        ctx.fillStyle = enabled ? '#fff' : '#aaa';
+        ctx.font = '20px Arial, sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, centerX, y + buttonHeight / 2);
+      }
+
+      // Resume button
+      drawButton(centerY - 60, '▶ Resume');
+
+      // Sound toggle
+      drawButton(centerY + 10, soundEnabled ? '🔊 Sound: ON' : '🔇 Sound: OFF');
+
+      // Tilt controls (mobile only)
+      if (isMobile) {
+        drawButton(centerY + 75, tiltEnabled ? '📱 Tilt: ON' : '📱 Tilt: OFF');
+      }
+
+      // Reset stats
+      const resetY = isMobile ? centerY + 140 : centerY + 75;
+      drawButton(resetY, '🗑️ Reset Stats');
+
+      // Instructions
+      ctx.fillStyle = '#aaa';
+      ctx.font = '16px Arial, sans-serif';
+      const instructY = isMobile ? resetY + 80 : centerY + 150;
+      if (isMobile) {
+        ctx.fillText('Tap buttons to adjust settings', centerX, instructY);
+      } else {
+        ctx.fillText('Press ESC or P to resume', centerX, instructY);
+        ctx.fillText('Use arrow keys or mouse to move', centerX, instructY + 25);
+      }
+    }
+
+    // Simple pause indicator (when paused without menu)
+    if (paused && !showPauseMenu) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 48px Arial';
+      ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2);
+      ctx.font = '20px Arial';
+      ctx.fillText('Press ESC or P to resume', canvas.width / 2, canvas.height / 2 + 50);
+    }
 
     // Game Over overlay
     if (gameOver) {
