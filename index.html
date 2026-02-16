@@ -208,14 +208,15 @@
   const MAX_LIVES = 3;
 
   const FOOD_TYPES = [
-    { name: 'hrs',       points: 2, deadly: false },
-    { name: 'sus',       points: 2, deadly: false },
-    { name: 'muckalica', points: 1, deadly: false },
-    { name: 'pizza',     points: 0, deadly: true  },
+    { name: 'hrs',       points: 2, deadly: false, isHeart: false },
+    { name: 'sus',       points: 2, deadly: false, isHeart: false },
+    { name: 'muckalica', points: 1, deadly: false, isHeart: false },
+    { name: 'pizza',     points: 0, deadly: true,  isHeart: false },
+    { name: 'heart',     points: 0, deadly: false, isHeart: true  },
   ];
 
   const POWER_UP_TYPES = [
-    { type: 'shield', color: '#4ECDC4', duration: 0, icon: '🛡️' },
+    { type: 'shield', color: '#4ECDC4', duration: 10000, icon: '🛡️' },
     { type: 'slowmo', color: '#95E1D3', duration: 5000, icon: '⏱️' },
     { type: 'magnet', color: '#F38181', duration: 7000, icon: '🧲' },
     { type: 'double', color: '#FFD93D', duration: 10000, icon: '2×' },
@@ -286,6 +287,7 @@
   let showModeSelect = false;
   let showTutorial = false;
   let tutorialStep = 0;
+  let tutorialFromPause = false;
   let playerName = '';
   let highScores;
   
@@ -477,16 +479,28 @@
         tutorialStep++;
         if (tutorialStep >= 4) {
           showTutorial = false;
-          markTutorialSeen();
-          showModeSelect = true;
+          if (!tutorialFromPause) {
+            markTutorialSeen();
+            showModeSelect = true;
+          } else {
+            tutorialFromPause = false;
+            paused = true;
+            showPauseMenu = true;
+          }
         }
         return;
       }
       if (e.key === 'Escape') {
         showTutorial = false;
-        markTutorialSeen();
         tutorialStep = 0;
-        showModeSelect = true;
+        if (!tutorialFromPause) {
+          markTutorialSeen();
+          showModeSelect = true;
+        } else {
+          tutorialFromPause = false;
+          paused = true;
+          showPauseMenu = true;
+        }
         return;
       }
       return; // Block other keys during tutorial
@@ -639,19 +653,31 @@
         tutorialStep++;
         if (tutorialStep >= 4) {
           showTutorial = false;
-          markTutorialSeen();
-          showModeSelect = true;
+          if (!tutorialFromPause) {
+            markTutorialSeen();
+            showModeSelect = true;
+          } else {
+            tutorialFromPause = false;
+            paused = true;
+            showPauseMenu = true;
+          }
         }
         vibrate(8);
         return;
       }
 
-      // Skip button
-      if (tutorialStep < 3 && y >= canvas.height - 35 && y <= canvas.height - 5) {
+      // Skip/Close button
+      if ((tutorialStep < 3 || tutorialFromPause) && y >= canvas.height - 35 && y <= canvas.height - 5) {
         showTutorial = false;
-        markTutorialSeen();
         tutorialStep = 0;
-        showModeSelect = true;
+        if (!tutorialFromPause) {
+          markTutorialSeen();
+          showModeSelect = true;
+        } else {
+          tutorialFromPause = false;
+          paused = true;
+          showPauseMenu = true;
+        }
         vibrate(8);
         return;
       }
@@ -724,8 +750,21 @@
       return;
     }
 
+    // Tutorial button
+    const tutorialY = isMobile ? centerY + 140 : centerY + 75;
+    if (x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
+        y >= tutorialY && y <= tutorialY + 50) {
+      showTutorial = true;
+      tutorialStep = 0;
+      tutorialFromPause = true;
+      paused = false;
+      showPauseMenu = false;
+      vibrate(10);
+      return;
+    }
+
     // Reset stats button
-    const resetY = isMobile ? centerY + 140 : centerY + 75;
+    const resetY = isMobile ? centerY + 205 : centerY + 140;
     if (x >= centerX - buttonWidth / 2 && x <= centerX + buttonWidth / 2 &&
         y >= resetY && y <= resetY + 50) {
       if (confirm('Reset all stats and achievements?')) {
@@ -741,7 +780,18 @@
 
   // ─── Spawning ───
   function spawnItem() {
-    const type = FOOD_TYPES[Math.floor(Math.random() * FOOD_TYPES.length)];
+    let type;
+    const rand = Math.random();
+    
+    // Hearts spawn only 8% of the time, rest is normal food
+    if (rand < 0.08) {
+      type = FOOD_TYPES.find(t => t.isHeart);
+    } else {
+      // Select from non-heart food types
+      const regularFood = FOOD_TYPES.filter(t => !t.isHeart);
+      type = regularFood[Math.floor(Math.random() * regularFood.length)];
+    }
+    
     const x = Math.random() * (canvas.width - ITEM_SIZE);
     items.push({ x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, type, isPowerUp: false });
   }
@@ -759,21 +809,16 @@
 
   function activatePowerUp(powerUp) {
     playSound('powerup');
-    if (powerUp.type === 'shield') {
-      // Shield gives 1 extra life
-      if (lives < MAX_LIVES) lives++;
+    // All power-ups are now timed
+    const existing = activePowerUps.find(p => p.type === powerUp.type);
+    if (existing) {
+      existing.endTime = performance.now() + powerUp.duration;
     } else {
-      // Timed power-ups
-      const existing = activePowerUps.find(p => p.type === powerUp.type);
-      if (existing) {
-        existing.endTime = performance.now() + powerUp.duration;
-      } else {
-        activePowerUps.push({
-          type: powerUp.type,
-          endTime: performance.now() + powerUp.duration,
-          ...powerUp
-        });
-      }
+      activePowerUps.push({
+        type: powerUp.type,
+        endTime: performance.now() + powerUp.duration,
+        ...powerUp
+      });
     }
   }
 
@@ -902,23 +947,25 @@
     const currentFallSpeed = hasPowerUp('slowmo') ? fallSpeed * 0.5 : fallSpeed;
 
     // Magnet effect
-    const magnetRange = hasPowerUp('magnet') ? 80 : 0;
+    const magnetRange = hasPowerUp('magnet') ? 120 : 0;
 
     // Move items & check collisions
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i];
-      item.y += currentFallSpeed;
-
-      // Magnet attraction
+      
+      // Magnet attraction (before normal movement)
       if (magnetRange > 0 && !item.isPowerUp && !item.type.deadly) {
         const dx = (player.x + player.w / 2) - (item.x + item.w / 2);
         const dy = (player.y + player.h / 2) - (item.y + item.h / 2);
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < magnetRange && dist > 0) {
-          item.x += (dx / dist) * 3;
-          item.y += (dy / dist) * 3;
+          const pullStrength = 5;
+          item.x += (dx / dist) * pullStrength;
+          item.y += (dy / dist) * pullStrength;
         }
       }
+      
+      item.y += currentFallSpeed;
 
       // Caught by player (pixel-perfect)
       const collides = item.isPowerUp 
@@ -935,6 +982,16 @@
         }
 
         if (item.type.deadly) {
+          // Check if player has shield (pizza immunity)
+          if (hasPowerUp('shield')) {
+            // Deflect pizza with shield!
+            playSound('powerup');
+            createParticles(item.x + item.w / 2, item.y + item.h / 2, 20, '#4ECDC4', 5);
+            vibrate(15);
+            items.splice(i, 1);
+            continue;
+          }
+          
           playSound('pizza');
           screenShake = 15;
           createParticles(item.x + item.w / 2, item.y + item.h / 2, 20, '#ff6b6b', 5);
@@ -949,6 +1006,18 @@
           saveStats();
           checkAchievements();
           return;
+        }
+        
+        // Heart item - adds a life
+        if (item.type.isHeart) {
+          if (lives < MAX_LIVES && lives !== Infinity) {
+            lives++;
+            playSound('powerup');
+            createParticles(item.x + item.w / 2, item.y + item.h / 2, 15, '#ff69b4', 4);
+            vibrate(15);
+          }
+          items.splice(i, 1);
+          continue;
         }
 
         // Successful catch
@@ -1103,26 +1172,32 @@
         },
         {
           title: '🍖 Catch the Good Food',
-          text: 'Catch HRS and ŠUS (+2 points) or Muckalica (+1 point)\nBuild combos by catching multiple items quickly!',
+          text: 'Catch HRS and SUS (+2 points) or Muckalica (+1 point)\nBuild combos by catching multiple items quickly!',
           demo: '🍖 +2 | 🥘 +1'
         },
         {
           title: '🎁 Power-ups',
-          text: 'Collect power-ups for special abilities:\n🛡️ Shield • 🕐 Slow Mo • 🧲 Magnet • ✨ Double Points',
+          text: '🛡️ Shield: Pizza immunity (10s)\n⏱️ Slow Mo: Slower falling (5s)\n🧲 Magnet: Auto-attract food (7s)\n2× Double: 2x points (10s)',
           demo: '🎁'
         },
         {
-          title: '🍕 Avoid Pizza!',
-          text: 'Pizza is instant game over!\nDodge it at all costs.',
-          demo: '🍕 ☠️'
+          title: '❤️ Hearts & Pizza',
+          text: 'Catch hearts to gain extra lives!\nAvoid pizza or use shield to deflect it.',
+          demo: '❤️ = +1 | 🍕 = ☠️'
         }
       ];
       
       const step = tutorialSteps[tutorialStep];
       if (!step) {
         showTutorial = false;
-        markTutorialSeen();
-        showModeSelect = true;
+        if (!tutorialFromPause) {
+          markTutorialSeen();
+          showModeSelect = true;
+        } else {
+          tutorialFromPause = false;
+          paused = true;
+          showPauseMenu = true;
+        }
         return;
       }
       
@@ -1153,18 +1228,18 @@
       
       // Next button
       const btnY = canvas.height - 80;
-      const btnText = tutorialStep < tutorialSteps.length - 1 ? 'NEXT' : 'START GAME';
+      const btnText = tutorialStep < tutorialSteps.length - 1 ? 'NEXT' : (tutorialFromPause ? 'BACK TO GAME' : 'START GAME');
       ctx.fillStyle = '#4ECDC4';
       ctx.fillRect(canvas.width / 2 - 100, btnY, 200, 50);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 20px Arial, sans-serif';
       ctx.fillText(btnText, canvas.width / 2, btnY + 33);
       
-      // Skip button
-      if (tutorialStep < tutorialSteps.length - 1) {
+      // Skip/Close button
+      if (tutorialStep < tutorialSteps.length - 1 || tutorialFromPause) {
         ctx.fillStyle = '#666';
         ctx.font = '16px Arial, sans-serif';
-        ctx.fillText('Skip Tutorial', canvas.width / 2, canvas.height - 20);
+        ctx.fillText(tutorialFromPause ? 'Close (ESC)' : 'Skip Tutorial', canvas.width / 2, canvas.height - 20);
       }
       
       ctx.restore();
@@ -1204,6 +1279,22 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(item.powerUp.icon, item.x + item.w / 2, item.y + item.h / 2);
+        ctx.restore();
+      } else if (item.type.isHeart) {
+        // Heart visual - rendered like power-ups
+        ctx.save();
+        ctx.globalAlpha = 0.9 + Math.sin(Date.now() / 150) * 0.1;
+        ctx.fillStyle = '#ff69b4';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ff69b4';
+        ctx.beginPath();
+        ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 40px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('❤️', item.x + item.w / 2, item.y + item.h / 2);
         ctx.restore();
       } else {
         ctx.drawImage(sprites[item.type.name], item.x, item.y, item.w, item.h);
@@ -1370,14 +1461,18 @@
         drawButton(centerY + 75, tiltEnabled ? '📱 Tilt: ON' : '📱 Tilt: OFF');
       }
 
+      // Tutorial button
+      const tutorialY = isMobile ? centerY + 140 : centerY + 75;
+      drawButton(tutorialY, '📖 Tutorial');
+
       // Reset stats
-      const resetY = isMobile ? centerY + 140 : centerY + 75;
+      const resetY = isMobile ? centerY + 205 : centerY + 140;
       drawButton(resetY, '🗑️ Reset Stats');
 
       // Instructions
       ctx.fillStyle = '#aaa';
       ctx.font = '16px Arial, sans-serif';
-      const instructY = isMobile ? resetY + 80 : centerY + 150;
+      const instructY = isMobile ? resetY + 80 : centerY + 215;
       if (isMobile) {
         ctx.fillText('Tap buttons to adjust settings', centerX, instructY);
       } else {

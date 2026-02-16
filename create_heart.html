@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Create Heart Sprite</title>
+</head>
+<body>
+  <canvas id="canvas" width="200" height="200"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Draw heart shape
+    ctx.fillStyle = '#ff1493';
+    ctx.beginPath();
+    const x = 100;
+    const y = 100;
+    const size = 80;
+    
+    // Heart shape using bezier curves
+    ctx.moveTo(x, y + size / 4);
+    ctx.bezierCurveTo(x, y, x - size / 2, y, x - size / 2, y + size / 4);
+    ctx.bezierCurveTo(x - size / 2, y + size / 2, x, y + size * 0.75, x, y + size);
+    ctx.bezierCurveTo(x, y + size * 0.75, x + size / 2, y + size / 2, x + size / 2, y + size / 4);
+    ctx.bezierCurveTo(x + size / 2, y, x, y, x, y + size / 4);
+    ctx.fill();
+    
+    // Add glossy highlight
+    const gradient = ctx.createLinearGradient(x - 20, y + 20, x + 20, y + 60);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x - 15, y + 25, 15, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Download the image
+    setTimeout(() => {
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'heart.png';
+        a.click();
+        URL.revokeObjectURL(url);
+        document.body.innerHTML = '<h2>Heart sprite created! Check your downloads.</h2>';
+      });
+    }, 100);
+  </script>
+</body>
+</html>
