@@ -1,0 +1,31 @@
+{
+  "name": "picasso-catch",
+  "version": "3.0.0",
+  "description": "Catch the food, avoid the pizza! A browser-based PWA game",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint js/*.js sw.js",
+    "lint:fix": "eslint js/*.js sw.js --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/todor96/picasso.git"
+  },
+  "keywords": [
+    "game",
+    "pwa",
+    "canvas",
+    "browser-game"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@vitest/ui": "^1.3.0",
+    "eslint": "^8.57.0",
+    "happy-dom": "^13.6.0",
+    "vitest": "^1.3.0"
+  }
+}

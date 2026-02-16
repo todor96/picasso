@@ -162,6 +162,47 @@ Unlock achievements like:
 ### Requirements
 - Modern web browser (Chrome, Firefox, Edge, Safari)
 - Local web server (for testing)
+- Node.js 20+ (for running tests and linting)
+
+### Setup for Development
+
+1. **Install Node.js dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Run tests**
+   ```bash
+   npm test           # Run all tests once
+   npm run test:watch # Run tests in watch mode
+   ```
+
+3. **Lint code**
+   ```bash
+   npm run lint       # Check for code issues
+   npm run lint:fix   # Auto-fix linting issues
+   ```
+
+### CI/CD Pipeline
+
+The project includes a GitHub Actions pipeline that automatically:
+- ✅ **Lints** all JavaScript files with ESLint
+- ✅ **Tests** game logic with Vitest
+- ✅ **Deploys** to GitHub Pages on every push to main
+
+**Workflow:** `.github/workflows/ci-cd.yml`
+
+All checks must pass before deployment. View build status and test results in the Actions tab.
+
+### Testing
+
+The project includes comprehensive unit tests:
+- **Config tests** - Validate game configuration
+- **Utils tests** - Test collision detection and utilities
+- **Asset tests** - Verify sprite files exist
+- **Manifest tests** - Validate PWA manifest
+
+Run tests locally with `npm test` before pushing changes.
 
 ### Modifying the Game
 
