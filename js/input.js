@@ -4,21 +4,27 @@
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
 
-  // Name entry for high score
-  if (gameOver && isHighScore(currentMode.id, score) && !playerName) {
-    if (e.key === 'Enter' && playerName && playerName.trim().length > 0) {
+  // Name entry for high score - stay in entry mode while typing
+  const needsNameEntry = gameOver && isHighScore(currentMode.id, score) && playerName.length === 0;
+  const inNameEntry = needsNameEntry || (gameOver && playerName.length > 0 && playerName.length < 15 && !keys['Enter']);
+  
+  if (inNameEntry) {
+    if (e.key === 'Enter' && playerName.trim().length > 0) {
       addHighScore(currentMode.id, score, playerName.trim(), maxCombo);
+      // Keep playerName set so we don't show entry screen again
       return;
     }
     if (e.key === 'Backspace') {
       playerName = playerName.slice(0, -1);
       return;
     }
-    if (e.key.length === 1 && playerName.length < 15) {
+    if (e.key.length === 1 && playerName.length < 15 && needsNameEntry) {
       playerName += e.key;
       return;
     }
-    return; // Block other keys during name entry
+    if (needsNameEntry) {
+      return; // Block other keys only when waiting for first character
+    }
   }
 
   // Tutorial navigation
