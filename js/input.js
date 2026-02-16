@@ -4,27 +4,24 @@
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
 
-  // Name entry for high score - stay in entry mode while typing
-  const needsNameEntry = gameOver && isHighScore(currentMode.id, score) && playerName.length === 0;
-  const inNameEntry = needsNameEntry || (gameOver && playerName.length > 0 && playerName.length < 15 && !keys['Enter']);
+  // Name entry for high score
+  const isInNameEntry = gameOver && isHighScore(currentMode.id, score) && !highScoreSaved;
   
-  if (inNameEntry) {
+  if (isInNameEntry) {
     if (e.key === 'Enter' && playerName.trim().length > 0) {
       addHighScore(currentMode.id, score, playerName.trim(), maxCombo);
-      // Keep playerName set so we don't show entry screen again
+      highScoreSaved = true;
       return;
     }
     if (e.key === 'Backspace') {
       playerName = playerName.slice(0, -1);
       return;
     }
-    if (e.key.length === 1 && playerName.length < 15 && needsNameEntry) {
+    if (e.key.length === 1 && playerName.length < 15) {
       playerName += e.key;
       return;
     }
-    if (needsNameEntry) {
-      return; // Block other keys only when waiting for first character
-    }
+    return; // Block other keys during name entry
   }
 
   // Tutorial navigation
@@ -228,22 +225,24 @@ canvas.addEventListener('click', e => {
   }
 
   // Name entry for high score (mobile)
-  if (gameOver && isHighScore(currentMode.id, score) && !playerName && isMobile) {
+  if (gameOver && isHighScore(currentMode.id, score) && !highScoreSaved && isMobile) {
     const namePrompt = prompt('🏆 New High Score!\n\nEnter your name:');
     if (namePrompt && namePrompt.trim().length > 0) {
       playerName = namePrompt.trim().substring(0, 15);
       addHighScore(currentMode.id, score, playerName, maxCombo);
+      highScoreSaved = true;
     }
     return;
   }
 
-  // Game over - restart or mode select
-  if (gameOver) {
+  // Game over - restart or mode select (but not during name entry)
+  if (gameOver && (highScoreSaved || !isHighScore(currentMode.id, score))) {
     const leaderboard = loadLeaderboard(currentMode.id);
     const promptY = leaderboard.length > 0 ? 460 : 260;
     if (y >= promptY + 10 && y <= promptY + 40) {
       showModeSelect = true;
       playerName = '';
+      highScoreSaved = false;
       vibrate(10);
     } else {
       startGame();

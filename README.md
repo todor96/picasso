@@ -4,7 +4,7 @@ A fun and addictive browser-based catching game where you play as Picasso, catch
 
 ## 🎮 Play Now
 
-**Live Demo:** https://todor96.github.io/picasso.git
+**Live Demo:** https://todor96.github.io/picasso
 
 ## 📖 About
 

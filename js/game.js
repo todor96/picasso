@@ -23,6 +23,7 @@ let showTutorial = false;
 let tutorialStep = 0;
 let tutorialFromPause = false;
 let playerName = '';
+let highScoreSaved = false;
 let highScores;
 let pointerX = null;
 let touchStartX = null;
@@ -62,6 +63,8 @@ function resetState() {
   paused = false;
   particles = [];
   screenShake = 0;
+  playerName = '';
+  highScoreSaved = false;
 
   stats.gamesPlayed++;
   saveStats(stats);
@@ -329,6 +332,7 @@ function startGame() {
   
   if (gameOver && score > 0 && playerName) {
     playerName = '';
+    highScoreSaved = false;
   }
   
   resetState();

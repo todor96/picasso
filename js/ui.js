@@ -440,7 +440,7 @@ function drawGameOver() {
 
   // Check if this is a high score that needs name entry
   const isNewHighScore = isHighScore(currentMode.id, score);
-  const needsNameEntry = isNewHighScore && !playerName;
+  const needsNameEntry = isNewHighScore && !highScoreSaved;
 
   if (needsNameEntry) {
     drawNameEntry();
