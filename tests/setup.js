@@ -18,14 +18,43 @@ const utilsContent = readFileSync(utilsPath, 'utf-8');
 // We'll extract the constants and functions and make them globally available
 // This is a simple approach - in production you might use a proper module system
 
-// For now, we'll use eval in a controlled way to load the game constants
-// This works because config.js and utils.js use const declarations
-
 try {
-  // Execute config.js in global scope
-  eval(configContent);
-  // Execute utils.js in global scope  
-  eval(utilsContent);
+  // Create a wrapper to capture the constants and functions
+  // and assign them to globalThis
+  const configWrapper = `
+    ${configContent}
+    // Assign to globalThis
+    globalThis.GAME_VERSION = GAME_VERSION;
+    globalThis.PLAYER_WIDTH = PLAYER_WIDTH;
+    globalThis.PLAYER_HEIGHT = PLAYER_HEIGHT;
+    globalThis.ITEM_SIZE = ITEM_SIZE;
+    globalThis.PLAYER_SPEED = PLAYER_SPEED;
+    globalThis.INITIAL_FALL_SPEED = INITIAL_FALL_SPEED;
+    globalThis.INITIAL_SPAWN_INTERVAL = INITIAL_SPAWN_INTERVAL;
+    globalThis.DIFFICULTY_INTERVAL = DIFFICULTY_INTERVAL;
+    globalThis.SPEED_INCREMENT = SPEED_INCREMENT;
+    globalThis.SPAWN_DECREMENT = SPAWN_DECREMENT;
+    globalThis.MIN_SPAWN_INTERVAL = MIN_SPAWN_INTERVAL;
+    globalThis.MAX_LIVES = MAX_LIVES;
+    globalThis.FOOD_TYPES = FOOD_TYPES;
+    globalThis.POWER_UP_TYPES = POWER_UP_TYPES;
+    globalThis.ACHIEVEMENTS = ACHIEVEMENTS;
+    globalThis.GAME_MODES = GAME_MODES;
+    globalThis.SPRITE_NAMES = SPRITE_NAMES;
+  `;
+  
+  const utilsWrapper = `
+    ${utilsContent}
+    // Assign to globalThis
+    globalThis.isMobile = isMobile;
+    globalThis.vibrate = vibrate;
+    globalThis.pixelPerfectCollision = pixelPerfectCollision;
+  `;
+  
+  // Execute config.js wrapper
+  eval(configWrapper);
+  // Execute utils.js wrapper  
+  eval(utilsWrapper);
 } catch (error) {
   console.warn('Warning: Could not load game modules for testing:', error.message);
 }
