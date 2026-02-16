@@ -23,6 +23,7 @@ Catch HRS, SUS, and Muckalica while avoiding deadly pizzas! Build combos, collec
 - **⏱️ Slow Mo** - Slower falling items for 5 seconds
 - **🧲 Magnet** - Auto-attract food for 7 seconds
 - **2× Double** - Double points for 10 seconds
+- **❤️ Heart** - Extra life (up to 3 lives)
 
 ### 🏆 Features
 - **Combo System** - Catch multiple items quickly to build combos
@@ -138,7 +139,6 @@ All sprites are custom-designed:
 - **SUS** - Serbian sausage (+2 points)
 - **Muckalica** - Traditional stew (+1 point)
 - **Pizza** - Deadly to catch (game over)
-- **Heart** - Extra life power-up
 
 ## 📊 Stats & Achievements
 

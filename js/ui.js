@@ -46,8 +46,6 @@ function draw() {
   items.forEach(item => {
     if (item.isPowerUp) {
       drawPowerUp(item);
-    } else if (item.type.isHeart) {
-      drawHeart(item);
     } else {
       ctx.drawImage(sprites[item.type.name], item.x, item.y, item.w, item.h);
     }
@@ -97,23 +95,6 @@ function drawPowerUp(item) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(item.powerUp.icon, item.x + item.w / 2, item.y + item.h / 2);
-  ctx.restore();
-}
-
-function drawHeart(item) {
-  ctx.save();
-  ctx.globalAlpha = 0.9 + Math.sin(Date.now() / 150) * 0.1;
-  ctx.fillStyle = '#ff69b4';
-  ctx.shadowBlur = 10;
-  ctx.shadowColor = '#ff69b4';
-  ctx.beginPath();
-  ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.font = 'bold 40px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('❤️', item.x + item.w / 2, item.y + item.h / 2);
   ctx.restore();
 }
 
@@ -292,13 +273,13 @@ function drawTutorial() {
     },
     {
       title: '🎁 Power-ups',
-      text: '🛡️ Shield: Pizza immunity (10s)\n⏱️ Slow Mo: Slower falling (5s)\n🧲 Magnet: Auto-attract food (7s)\n2× Double: 2x points (10s)',
+      text: '🛡️ Shield: Pizza immunity (10s)\n⏱️ Slow Mo: Slower falling (5s)\n🧲 Magnet: Auto-attract food (7s)\n2× Double: 2x points (10s)\n❤️ Heart: Extra life',
       demo: '🎁'
     },
     {
-      title: '❤️ Hearts & Pizza',
-      text: 'Catch hearts to gain extra lives!\nAvoid pizza or use shield to deflect it.',
-      demo: '❤️ = +1 | 🍕 = ☠️'
+      title: '🍕 Avoid Pizza',
+      text: 'Pizza is deadly - game over if caught!\nUse shield power-up to deflect it.',
+      demo: '🍕 = ☠️'
     }
   ];
   

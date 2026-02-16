@@ -18,11 +18,10 @@ const MAX_LIVES = 3;
 
 // Food types
 const FOOD_TYPES = [
-  { name: 'hrs',       points: 2, deadly: false, isHeart: false },
-  { name: 'sus',       points: 2, deadly: false, isHeart: false },
-  { name: 'muckalica', points: 1, deadly: false, isHeart: false },
-  { name: 'pizza',     points: 0, deadly: true,  isHeart: false },
-  { name: 'heart',     points: 0, deadly: false, isHeart: true  },
+  { name: 'hrs',       points: 2, deadly: false },
+  { name: 'sus',       points: 2, deadly: false },
+  { name: 'muckalica', points: 1, deadly: false },
+  { name: 'pizza',     points: 0, deadly: true  },
 ];
 
 // Power-up types
@@ -31,6 +30,7 @@ const POWER_UP_TYPES = [
   { type: 'slowmo', color: '#95E1D3', duration: 5000, icon: '⏱️' },
   { type: 'magnet', color: '#F38181', duration: 7000, icon: '🧲' },
   { type: 'double', color: '#FFD93D', duration: 10000, icon: '2×' },
+  { type: 'heart',  color: '#ff69b4', duration: 0,     icon: '❤️' },
 ];
 
 // Achievements

@@ -72,17 +72,7 @@ function resetState() {
 
 // ─── Spawning Functions ───
 function spawnItem() {
-  let type;
-  const rand = Math.random();
-  
-  // Hearts spawn only 8% of the time
-  if (rand < 0.08) {
-    type = FOOD_TYPES.find(t => t.isHeart);
-  } else {
-    const regularFood = FOOD_TYPES.filter(t => !t.isHeart);
-    type = regularFood[Math.floor(Math.random() * regularFood.length)];
-  }
-  
+  const type = FOOD_TYPES[Math.floor(Math.random() * FOOD_TYPES.length)];
   const x = Math.random() * (canvas.width - ITEM_SIZE);
   items.push({ x, y: -ITEM_SIZE, w: ITEM_SIZE, h: ITEM_SIZE, type, isPowerUp: false });
 }
@@ -95,6 +85,15 @@ function spawnPowerUp() {
 
 // ─── Power-Up Management ───
 function activatePowerUp(powerUp) {
+  // Heart power-up gives extra life instantly
+  if (powerUp.type === 'heart') {
+    if (lives !== Infinity && lives < MAX_LIVES) {
+      lives++;
+    }
+    return;
+  }
+  
+  // Other power-ups with duration
   const existing = activePowerUps.find(p => p.type === powerUp.type);
   if (existing) {
     existing.endTime = performance.now() + powerUp.duration;
@@ -219,7 +218,7 @@ function update(now) {
         vibrate(15);
       }
     } else if (itemMask && pixelPerfectCollision(player, playerMask, item, itemMask)) {
-      // Caught item
+      // Caught item (regular food items with sprites)
       if (item.type.deadly) {
         // Pizza
         if (hasPowerUp('shield')) {
@@ -235,15 +234,6 @@ function update(now) {
           const survivalTime = Math.floor((now - gameStartTime) / 1000);
           stats.maxSurvivalTime = Math.max(stats.maxSurvivalTime, survivalTime);
         }
-      } else if (item.type.isHeart) {
-        // Heart - extra life
-        if (lives !== Infinity && lives < MAX_LIVES) {
-          lives++;
-          playSound('powerup');
-          createParticles(item.x + item.w / 2, item.y + item.h / 2, 20, '#ff69b4', 5);
-          vibrate(20);
-        }
-        items.splice(i, 1);
       } else {
         // Regular food
         const points = hasPowerUp('double') ? item.type.points * 2 : item.type.points;
@@ -267,7 +257,7 @@ function update(now) {
 
     // Remove items that fell off screen
     if (item.y > canvas.height) {
-      if (!item.isPowerUp && !item.type.isHeart) {
+      if (!item.isPowerUp) {
         if (item.type.deadly) {
           stats.pizzasDodged++;
         } else {
