@@ -6,7 +6,9 @@ function loadStats() {
   if (saved) {
     try {
       return JSON.parse(saved);
-    } catch(e) {}
+    } catch(e) {
+      // Ignore parse errors, return default
+    }
   }
   return {
     totalCatches: 0,
@@ -28,7 +30,9 @@ function loadSettings() {
   if (saved) {
     try {
       return JSON.parse(saved);
-    } catch(e) {}
+    } catch(e) {
+      // Ignore parse errors, return default
+    }
   }
   return {
     soundEnabled: true,
@@ -49,7 +53,9 @@ function loadLeaderboard(mode) {
   if (saved) {
     try {
       return JSON.parse(saved);
-    } catch(e) {}
+    } catch(e) {
+      // Ignore parse errors, return default
+    }
   }
   return [];
 }
